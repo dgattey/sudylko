@@ -80,7 +80,7 @@ final class PuzzleTimer: ObservableObject {
         isPaused = state.timerPaused
         isRunning = state.timerRunning
 
-        if state.isComplete {
+        if state.isComplete || state.isLost {
             finish()
             return
         }

@@ -17,11 +17,16 @@ final class GameViewModel: ObservableObject {
     @Published var pulseRows: Set<Int> = []
     @Published var pulseCols: Set<Int> = []
     @Published var pulseBoxes: Set<Int> = []
+    @Published private(set) var puzzleCompletePulseGeneration: UInt = 0
     @Published private(set) var isComplete = false
+    @Published private(set) var isLost = false
     @Published var mistakeCells: Set<CellIndex> = []
     @Published private(set) var mistakesThisPuzzle = 0
     @Published private(set) var usedNotesThisPuzzle = false
     var revealMistakesImmediately = false
+    var impossibleMode = false
+
+    var isPuzzleEnded: Bool { isComplete || isLost }
     /// When false, board and keyboard input are ignored (paused, unfocused, or complete).
     var isInputEnabled = true
     /// Bumped when puzzle state changes so the UI can persist saves.
@@ -68,6 +73,7 @@ final class GameViewModel: ObservableObject {
         selected = nil
         highlightedDigit = nil
         isComplete = false
+        isLost = false
         mistakeCells = []
         mistakesThisPuzzle = 0
         usedNotesThisPuzzle = false
@@ -77,6 +83,7 @@ final class GameViewModel: ObservableObject {
         pulseRows = []
         pulseCols = []
         pulseBoxes = []
+        puzzleCompletePulseGeneration = 0
         clearUndoHistory()
         noteSave()
     }
@@ -94,6 +101,7 @@ final class GameViewModel: ObservableObject {
         game.selected = state.selected
         game.highlightedDigit = state.highlightedDigit
         game.isComplete = state.isComplete
+        game.isLost = state.isLost
         game.usedNotesThisPuzzle = state.notes.contains { row in
             row.contains { !$0.isEmpty }
         }
@@ -108,7 +116,7 @@ final class GameViewModel: ObservableObject {
 
     /// Moves the selection with arrow keys / WASD; works while paused.
     func moveSelection(deltaRow: Int, deltaCol: Int) {
-        guard !isComplete else { return }
+        guard !isPuzzleEnded else { return }
         let row: Int
         let col: Int
         if let selected {
@@ -123,7 +131,7 @@ final class GameViewModel: ObservableObject {
 
     /// Clears the selected cell from the keyboard (allowed while paused).
     func keyboardClearSelected() {
-        guard !isComplete, let selected, !givens.contains(selected) else { return }
+        guard !isPuzzleEnded, let selected, !givens.contains(selected) else { return }
         if isPencilMode {
             guard !notes[selected.row][selected.col].isEmpty else { return }
             recordUndo(at: selected)
@@ -202,6 +210,11 @@ final class GameViewModel: ObservableObject {
         if digit != solution[index.row][index.col] {
             mistakesThisPuzzle += 1
             AchievementStore.recordMistake(difficulty: difficulty)
+            refreshMistakes()
+            if impossibleMode {
+                endGameAsLost()
+                return
+            }
         }
         refreshMistakes()
         checkUnitCompletions()
@@ -302,7 +315,13 @@ final class GameViewModel: ObservableObject {
     // MARK: - Private
 
     private var acceptsInput: Bool {
-        isInputEnabled && !isComplete
+        isInputEnabled && !isPuzzleEnded
+    }
+
+    private func endGameAsLost() {
+        guard !isPuzzleEnded else { return }
+        isLost = true
+        noteSave()
     }
 
     func refreshMistakes() {
@@ -323,6 +342,7 @@ final class GameViewModel: ObservableObject {
     }
 
     private func checkWin() {
+        guard !isLost else { return }
         for r in 0..<9 {
             for c in 0..<9 {
                 guard values[r][c] == solution[r][c] else {
@@ -331,7 +351,9 @@ final class GameViewModel: ObservableObject {
                 }
             }
         }
+        guard !isComplete else { return }
         isComplete = true
+        triggerPuzzleCompletePulse()
         noteSave()
     }
 
@@ -392,7 +414,7 @@ final class GameViewModel: ObservableObject {
     }
 
     private func computeCanDelete() -> Bool {
-        guard !isComplete, let selected, !givens.contains(selected) else { return false }
+        guard !isPuzzleEnded, let selected, !givens.contains(selected) else { return false }
         if isPencilMode {
             return !notes[selected.row][selected.col].isEmpty
         }
@@ -439,6 +461,10 @@ final class GameViewModel: ObservableObject {
         return true
     }
 
+    private func triggerPuzzleCompletePulse() {
+        puzzleCompletePulseGeneration &+= 1
+    }
+
     private func triggerPulse(row: Int) {
         pulseRows.insert(row)
         clearPulseAfterDelay { self.pulseRows.remove(row) }
@@ -456,8 +482,26 @@ final class GameViewModel: ObservableObject {
 
     private func clearPulseAfterDelay(_ remove: @escaping () -> Void) {
         Task {
-            try? await Task.sleep(nanoseconds: 550_000_000)
+            try? await Task.sleep(nanoseconds: 920_000_000)
             remove()
         }
     }
+
+    #if DEBUG
+    func debugTriggerPuzzleCompletePulse() {
+        triggerPuzzleCompletePulse()
+    }
+
+    func debugTriggerFinishedRowPulse() {
+        triggerPulse(row: 4)
+    }
+
+    func debugTriggerFinishedColumnPulse() {
+        triggerPulse(col: 4)
+    }
+
+    func debugTriggerFinishedBoxPulse() {
+        triggerPulse(box: 4)
+    }
+    #endif
 }
