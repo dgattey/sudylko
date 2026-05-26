@@ -9,8 +9,11 @@ struct ContentView: View {
     @AppStorage("lastDifficulty") private var lastDifficultyRaw = GameDifficulty.medium.rawValue
     @AppStorage("lastFocusedSaveID") private var lastFocusedSaveIDString = ""
     @AppStorage("revealMistakesImmediately") private var revealMistakesImmediately = false
+    @AppStorage("impossibleMode") private var impossibleMode = false
     @State private var game: GameViewModel?
     @State private var isAppActive = true
+    @State private var isWindowMiniaturized = false
+    @State private var isWindowFullscreen = false
     @State private var autoPausedForInactive = false
     @State private var activeSaveID: UUID?
     @State private var seedInput = ""
@@ -18,13 +21,17 @@ struct ContentView: View {
     @State private var showSeedSheet = false
     @State private var showSettings = false
     @State private var showKeyboardShortcuts = false
-    @State private var showGameDeleteConfirmation = false
+    @State private var showGameArchiveConfirmation = false
     @State private var showGameRestartConfirmation = false
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
+    @State private var homeProgressInspectorPresented = false
+    @State private var homeInspectorSection: HomeProgressSection?
     @StateObject private var puzzleTimer = PuzzleTimer()
     /// Tracks macOS system appearance when `appearanceMode == .system` (updated via distributed notification).
     @State private var systemColorScheme = AppearanceMode.systemColorScheme()
     @State private var saveSlots: [SaveSlotSummary] = []
+    /// Bumped whenever saves reload so the sidebar list re-renders after menu-driven seeds.
+    @State private var saveSlotsRevision = 0
     @State private var saveTask: Task<Void, Never>?
     @State private var celebrationQueue: [AchievementID] = []
     @State private var activeCelebration: AchievementID?
@@ -60,7 +67,7 @@ struct ContentView: View {
     private var appChrome: some View {
         rootSplitView
             .overlay { gameOverlays }
-            .animation(.spring(response: 0.45, dampingFraction: 0.82), value: game?.isComplete == true)
+            .animation(.spring(response: 0.45, dampingFraction: 0.82), value: game?.isPuzzleEnded == true)
             .sheet(isPresented: $showSeedSheet) { seedSheet }
             .sheet(isPresented: $showKeyboardShortcuts) {
                 KeyboardShortcutsView()
@@ -71,9 +78,18 @@ struct ContentView: View {
                 appAccent.refresh()
                 performInitialSetup()
             }
-            .onChange(of: game?.isComplete, handleGameCompletionChange)
+            .onChange(of: game?.isComplete) { old, new in
+                handleGameCompletionChange(old, isComplete: new)
+            }
+            .onChange(of: game?.isLost, handleGameLossChange)
             .onChange(of: game?.saveRevision) { _, _ in schedulePersist() }
             .onChange(of: appAccent.accent) { _, _ in updateDockIcon() }
+            .onChange(of: revealMistakesImmediately) { _, _ in
+                applyGameplaySettingsToActiveGame()
+            }
+            .onChange(of: impossibleMode) { _, _ in
+                applyGameplaySettingsToActiveGame()
+            }
     }
 
     private var rootSplitView: some View {
@@ -91,16 +107,27 @@ struct ContentView: View {
         .environment(\.colorScheme, resolvedColorScheme)
         .environment(\.digitFontStyle, digitFont)
         .environment(\.isAppActive, isAppActive)
+        .environment(\.isWindowFullscreen, isWindowFullscreen)
         .preferredColorScheme(appearanceMode.preferredColorScheme(system: systemColorScheme))
         .background(WindowConfigurator(
             appearanceMode: appearanceMode,
-            isAppActive: $isAppActive
+            isAppActive: $isAppActive,
+            isWindowMiniaturized: $isWindowMiniaturized,
+            isWindowFullscreen: $isWindowFullscreen
         ))
         .onChange(of: appearanceRaw) { _, _ in refreshAppearanceFromSettings() }
         .onChange(of: isAppActive) { _, active in handleAppActiveChange(active) }
+        .onChange(of: showSettings) { _, _ in updateAutoPauseForInterrupts() }
+        .onChange(of: isWindowMiniaturized) { _, _ in updateAutoPauseForInterrupts() }
         .onChange(of: activeSaveID) { oldID, newID in
             handleActiveSaveIDChange(from: oldID, to: newID)
             updateDockIcon()
+        }
+        .onChange(of: isInGame) { _, inGame in
+            if inGame {
+                homeProgressInspectorPresented = false
+                homeInspectorSection = nil
+            }
         }
         .onChange(of: puzzleTimer.isPaused) { _, _ in
             persistCurrentGame()
@@ -126,14 +153,21 @@ struct ContentView: View {
             guard let id = notification.object as? AchievementID else { return }
             enqueueCelebrations([id])
         }
-        #endif
-        .onReceive(NotificationCenter.default.publisher(for: .savesDidChange)) { _ in
-            lastFocusedSaveIDString = ""
-            if isInGame {
-                goHome()
+        .onReceive(NotificationCenter.default.publisher(for: .debugTriggerPulse)) { notification in
+            guard let kind = notification.object as? DebugPulseKind else { return }
+            switch kind {
+            case .puzzleComplete:
+                game?.debugTriggerPuzzleCompletePulse()
+            case .finishedRow:
+                game?.debugTriggerFinishedRowPulse()
+            case .finishedColumn:
+                game?.debugTriggerFinishedColumnPulse()
+            case .finishedBox:
+                game?.debugTriggerFinishedBoxPulse()
             }
-            refreshSaveSlots()
         }
+        #endif
+        .onReceive(NotificationCenter.default.publisher(for: .savesDidChange), perform: handleSavesDidChange)
         .onReceive(NotificationCenter.default.publisher(for: .undo)) { _ in
             game?.undo()
             appCommands.sync(with: game)
@@ -150,10 +184,6 @@ struct ContentView: View {
         .onChange(of: game?.canRedo) { _, _ in appCommands.sync(with: game) }
         .onChange(of: game?.canDelete) { _, _ in appCommands.sync(with: game) }
         .onChange(of: game?.saveRevision) { _, _ in appCommands.sync(with: game) }
-        .onChange(of: revealMistakesImmediately) { _, _ in
-            game?.revealMistakesImmediately = revealMistakesImmediately
-            game?.refreshMistakes()
-        }
     }
 
     @ViewBuilder
@@ -169,6 +199,12 @@ struct ContentView: View {
 
         if game?.isComplete == true {
             completionBanner
+                .transition(.scale.combined(with: .opacity))
+                .zIndex(1)
+        }
+
+        if game?.isLost == true {
+            lossBanner
                 .transition(.scale.combined(with: .opacity))
                 .zIndex(1)
         }
@@ -190,6 +226,16 @@ struct ContentView: View {
         )
     }
 
+    private func handleSavesDidChange(_ notification: Notification) {
+        if notification.object as? SavesChangeReason == .deleteAll {
+            lastFocusedSaveIDString = ""
+            if isInGame {
+                goHome()
+            }
+        }
+        refreshSaveSlots()
+    }
+
     private func handleSystemThemeDidChange() {
         systemColorScheme = AppearanceMode.systemColorScheme()
         appAccent.systemColorScheme = systemColorScheme
@@ -198,11 +244,32 @@ struct ContentView: View {
         }
     }
 
-    private func handleGameCompletionChange(_: Bool?, isComplete: Bool?) {
-        guard isComplete == true else { return }
+    private func handleGameCompletionChange(_ old: Bool?, isComplete new: Bool?) {
+        guard new == true, old != true else { return }
         puzzleTimer.finish()
         persistCurrentGame()
+        guard shouldRecordCompletionStats() else { return }
         evaluateAchievementsAfterCompletion()
+    }
+
+    /// True only on the first stats/achievement pass for this save's win (not restore/revisit).
+    private func shouldRecordCompletionStats() -> Bool {
+        guard let saveID = activeSaveID,
+              let save = GameSaveStore.load(id: saveID) else { return true }
+        return !save.statsCompletionRecorded
+    }
+
+    private func handleGameLossChange(_: Bool?, isLost: Bool?) {
+        guard isLost == true, let game else { return }
+        puzzleTimer.finish()
+        AchievementStore.recordImpossibleLoss(difficulty: game.difficulty)
+        persistCurrentGame()
+    }
+
+    private func applyGameplaySettingsToActiveGame() {
+        game?.revealMistakesImmediately = revealMistakesImmediately
+        game?.impossibleMode = impossibleMode
+        game?.refreshMistakes()
     }
 
     private var sidebar: some View {
@@ -210,10 +277,11 @@ struct ContentView: View {
             activeSaveID: $activeSaveID,
             isInGame: isInGame,
             saveSlots: saveSlots,
+            saveSlotsRevision: saveSlotsRevision,
             liveTimer: puzzleTimer,
             onNewGame: handleNewGameButton,
-            onSelectSave: { id in switchToSave(id: id) },
-            onDeleteSave: deleteSave
+            onSelectSave: selectSave,
+            onArchiveSave: archiveSave
         )
     }
 
@@ -246,21 +314,24 @@ struct ContentView: View {
                     .help("Back to home and save this game")
             }
             ToolbarItem(placement: .principal) {
-                GameTimerBar(timer: puzzleTimer, isPuzzleComplete: game.isComplete)
-                    .fixedSize()
+                GameTimerBar(
+                    timer: puzzleTimer,
+                    isPuzzleEnded: game.isPuzzleEnded,
+                    endedLabel: game.isComplete ? "Done" : (game.isLost ? "Lost" : nil),
+                    endedLabelColor: game.isComplete ? .green : .red
+                )
+                .fixedSize()
             }
             ToolbarItemGroup(placement: .primaryAction) {
-                Button("Delete", systemImage: "trash", role: .destructive) {
-                    showGameDeleteConfirmation = true
+                Button("Archive", systemImage: "archivebox", role: .destructive) {
+                    showGameArchiveConfirmation = true
                 }
-                .help("Delete this saved game")
+                .help("Archive this saved game")
                 Button("Restart", systemImage: "arrow.counterclockwise") {
                     if game.hasPlayerEntries {
                         showGameRestartConfirmation = true
                     } else {
-                        game.replayCurrentPuzzle()
-                        puzzleTimer.start()
-                        persistCurrentGame()
+                        restartCurrentPuzzle(game: game)
                     }
                 }
                 .help("Restart this puzzle from the beginning")
@@ -282,23 +353,21 @@ struct ContentView: View {
             game: game,
             timer: puzzleTimer,
             onRestart: {
-                game.replayCurrentPuzzle()
-                puzzleTimer.start()
-                persistCurrentGame()
+                restartCurrentPuzzle(game: game)
             },
-            onDelete: {
-                deleteSave(id: saveID)
+            onArchive: {
+                archiveSave(id: saveID)
             },
             onGoHome: goHome,
             showSettings: $showSettings,
-            showDeleteConfirmation: $showGameDeleteConfirmation,
+            showArchiveConfirmation: $showGameArchiveConfirmation,
             showRestartConfirmation: $showGameRestartConfirmation
         )
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private var homeView: some View {
-        QuickStartView(
+        HomeView(
             onEasy: { startNewGame(difficulty: .easy) },
             onMedium: { startNewGame(difficulty: .medium) },
             onHard: { startNewGame(difficulty: .hard) },
@@ -306,8 +375,16 @@ struct ContentView: View {
                 seedInput = ""
                 seedSheetDifficulty = lastFocusedDifficulty
                 showSeedSheet = true
-            }
+            },
+            inspectorPresented: $homeProgressInspectorPresented,
+            inspectorSection: $homeInspectorSection
         )
+        .inspector(isPresented: $homeProgressInspectorPresented) {
+            HomeProgressPaneView(section: homeInspectorSection)
+                .inspectorColumnWidth(min: 260, ideal: 300, max: 400)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+        }
         .navigationTitle("")
         .hiddenWindowToolbar()
         .background {
@@ -413,6 +490,19 @@ struct ContentView: View {
         updateDockIcon()
     }
 
+    /// Sidebar row selection — routes through `activeSaveID` so loading uses one code path.
+    private func selectSave(id: UUID) {
+        if activeSaveID == id {
+            if game != nil {
+                resumeLoadedGameIfNeeded()
+            } else {
+                switchToSave(id: id)
+            }
+            return
+        }
+        activeSaveID = id
+    }
+
     private func switchToSave(id: UUID) {
         if game != nil, activeSaveID == id {
             resumeLoadedGameIfNeeded()
@@ -421,7 +511,7 @@ struct ContentView: View {
 
         pauseAndPersistOutgoingGame(excluding: id)
 
-        guard let state = GameSaveStore.load(id: id) else {
+        guard var state = GameSaveStore.load(id: id) else {
             if let previous = UUID(uuidString: lastFocusedSaveIDString) {
                 activeSaveID = previous
             } else {
@@ -433,20 +523,24 @@ struct ContentView: View {
         lastFocusedSaveIDString = id.uuidString
         lastDifficultyRaw = state.difficulty.rawValue
 
+        if state.isComplete, !state.statsCompletionRecorded {
+            state.statsCompletionRecorded = true
+            GameSaveStore.save(state)
+        }
+
         let restored = GameViewModel.restored(from: state)
         puzzleTimer.restore(from: state)
         withAnimation(detailNavigationAnimation) {
             assignGame(restored)
             activeSaveID = id
         }
-        game?.revealMistakesImmediately = revealMistakesImmediately
-        game?.refreshMistakes()
+        applyGameplaySettingsToActiveGame()
         resumeLoadedGameIfNeeded()
         updateDockIcon()
     }
 
     private func resumeLoadedGameIfNeeded() {
-        guard let game, !game.isComplete else { return }
+        guard let game, !game.isPuzzleEnded else { return }
         guard puzzleTimer.isRunning else { return }
         if puzzleTimer.isPaused {
             puzzleTimer.resume()
@@ -458,7 +552,7 @@ struct ContentView: View {
               outgoingID != excludedID,
               let game,
               isInGame else { return }
-        if puzzleTimer.isRunning, !puzzleTimer.isPaused, !game.isComplete {
+        if puzzleTimer.isRunning, !puzzleTimer.isPaused, !game.isPuzzleEnded {
             puzzleTimer.pause()
         }
         guard let createdAt = GameSaveStore.load(id: outgoingID)?.createdAt else { return }
@@ -490,6 +584,7 @@ struct ContentView: View {
     private func makeGame(puzzleSeed: PuzzleSeed, startedFromCustomSeed: Bool) -> GameViewModel {
         let vm = GameViewModel(puzzleSeed: puzzleSeed, startedFromCustomSeed: startedFromCustomSeed)
         vm.revealMistakesImmediately = revealMistakesImmediately
+        vm.impossibleMode = impossibleMode
         return vm
     }
 
@@ -524,18 +619,28 @@ struct ContentView: View {
         switchToSave(id: newID)
     }
 
+    private var shouldHoldAutoPause: Bool {
+        !isAppActive || showSettings || isWindowMiniaturized
+    }
+
     private func handleAppActiveChange(_ active: Bool) {
-        if active {
-            resumeAfterAutoPauseIfNeeded()
-        } else {
+        if !active {
             persistCurrentGame()
-            pauseForAppInactiveIfNeeded()
         }
+        updateAutoPauseForInterrupts()
         updateDockIcon()
     }
 
-    private func pauseForAppInactiveIfNeeded() {
-        guard isInGame else { return }
+    private func updateAutoPauseForInterrupts() {
+        if shouldHoldAutoPause {
+            pauseForAutoInterruptIfNeeded()
+        } else {
+            resumeAfterAutoPauseIfNeeded()
+        }
+    }
+
+    private func pauseForAutoInterruptIfNeeded() {
+        guard isInGame, let game, !game.isPuzzleEnded else { return }
         guard puzzleTimer.isRunning, !puzzleTimer.isPaused else { return }
         puzzleTimer.pause()
         autoPausedForInactive = true
@@ -552,7 +657,7 @@ struct ContentView: View {
     }
 
     private func evaluateAchievementsAfterCompletion() {
-        guard let game else { return }
+        guard let game, let saveID = activeSaveID else { return }
         let context = AchievementCompletionContext(
             difficulty: game.difficulty,
             elapsedSeconds: puzzleTimer.elapsed,
@@ -560,7 +665,23 @@ struct ContentView: View {
             mistakesInPuzzle: game.mistakesThisPuzzle,
             usedNotes: game.usedNotesThisPuzzle
         )
-        enqueueCelebrations(AchievementStore.recordCompletion(context))
+        enqueueCelebrations(AchievementStore.recordCompletion(context, saveID: saveID))
+    }
+
+    private func restartCurrentPuzzle(game: GameViewModel) {
+        if let started = AchievementStore.recordGameStarted(
+            difficulty: game.difficulty,
+            fromCustomSeed: game.startedFromCustomSeed
+        ) {
+            enqueueCelebrations([started])
+        }
+        game.replayCurrentPuzzle()
+        puzzleTimer.start()
+        if let id = activeSaveID, var state = GameSaveStore.load(id: id) {
+            state.statsCompletionRecorded = false
+            GameSaveStore.save(state)
+        }
+        persistCurrentGame()
     }
 
     private func enqueueCelebrations(_ ids: [AchievementID]) {
@@ -610,7 +731,7 @@ struct ContentView: View {
         guard !isInGame else { return }
         guard let id = UUID(uuidString: lastFocusedSaveIDString),
               let state = GameSaveStore.load(id: id),
-              !state.isComplete else { return }
+              !state.isComplete, !state.isLost else { return }
         switchToSave(id: id)
     }
 
@@ -632,17 +753,18 @@ struct ContentView: View {
 
     private func refreshSaveSlots() {
         saveSlots = GameSaveStore.summaries()
+        saveSlotsRevision &+= 1
     }
 
-    private func deleteSave(id: UUID) {
+    private func archiveSave(id: UUID) {
         let isCurrentGame = activeSaveID == id && isInGame
 
-        if let state = GameSaveStore.load(id: id), !state.isComplete,
+        if let state = GameSaveStore.load(id: id), !state.isArchived, !state.isComplete, !state.isLost,
            let abandoned = AchievementStore.recordAbandonedSave(difficulty: state.difficulty) {
             enqueueCelebrations([abandoned])
         }
 
-        GameSaveStore.delete(id: id)
+        GameSaveStore.archive(id: id)
 
         if lastFocusedSaveIDString == id.uuidString {
             lastFocusedSaveIDString = ""
@@ -657,22 +779,31 @@ struct ContentView: View {
     }
 
     private var completionBanner: some View {
-        VStack(spacing: 8) {
-            Image(systemName: "checkmark.seal.fill")
-                .font(.system(size: 44))
-                .symbolRenderingMode(.palette)
-                .foregroundStyle(.green, .primary.opacity(0.15))
-            Text("Puzzle complete!")
-                .font(.title2.weight(.semibold))
-            Text("Time: \(puzzleTimer.formattedElapsed)")
-                .font(.title3.monospaced())
-                .foregroundStyle(.secondary)
-            Button("Play again", action: goHome)
-            .buttonStyle(.borderedProminent)
-        }
-        .padding(28)
-        .background(.ultraThickMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .shadow(color: .black.opacity(0.12), radius: 20, y: 8)
+        PuzzleEndBannerView(
+            systemImage: "checkmark.seal.fill",
+            iconColor: .green,
+            title: "Puzzle complete!",
+            subtitle: nil,
+            formattedElapsed: puzzleTimer.formattedElapsed,
+            buttonTitle: "Play again",
+            buttonTint: appAccent.prominentTint,
+            onButton: goHome
+        )
+        .environment(\.colorScheme, resolvedColorScheme)
+    }
+
+    private var lossBanner: some View {
+        PuzzleEndBannerView(
+            systemImage: "xmark.seal.fill",
+            iconColor: .red,
+            title: "Puzzle lost",
+            subtitle: "Impossible mode — one mistake ends the run.",
+            formattedElapsed: puzzleTimer.formattedElapsed,
+            buttonTitle: "Try again",
+            buttonTint: appAccent.prominentTint,
+            onButton: goHome
+        )
+        .environment(\.colorScheme, resolvedColorScheme)
     }
 
     private var canStartFromSeedInput: Bool {

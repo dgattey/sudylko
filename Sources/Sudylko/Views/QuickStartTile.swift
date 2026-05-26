@@ -1,63 +1,22 @@
 import SwiftUI
 
-struct QuickStartView: View {
-    var onEasy: () -> Void
-    var onMedium: () -> Void
-    var onHard: () -> Void
-    var onFromSeed: () -> Void
+// MARK: - Difficulty tiles
 
-    @Environment(\.digitFontStyle) private var digitFontStyle
-    @Environment(\.colorScheme) private var colorScheme
-
-    private let columns = [
-        GridItem(.flexible(), spacing: 16),
-        GridItem(.flexible(), spacing: 16),
-    ]
-
-    var body: some View {
-        ScrollView {
-            VStack(spacing: 32) {
-                VStack(spacing: 6) {
-                    Text("Start a new game")
-                        .font(digitFontStyle.font(size: 28, weight: .semibold))
-                        .foregroundStyle(.primary)
-                    Text("Pick a difficulty to begin a new puzzle.")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                }
-
-                LazyVGrid(columns: columns, spacing: 16) {
-                    QuickStartTile(theme: .easy, action: onEasy)
-                    QuickStartTile(theme: .medium, action: onMedium)
-                    QuickStartTile(theme: .hard, action: onHard)
-                    QuickStartTile(theme: .fromSeed, action: onFromSeed)
-                }
-                .frame(maxWidth: 420)
-
-                PlayerStatsView()
-
-                AchievementsListView()
-            }
-            .padding(.vertical, 28)
-            .frame(maxWidth: .infinity)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-}
-
-private struct QuickStartTile: View {
+struct QuickStartTile: View {
     private static let cornerRadius: CGFloat = 14
 
     let theme: PuzzleTheme
     let action: () -> Void
 
     @AppStorage("windowBackgroundMaterial") private var materialRaw = WindowBackgroundMaterial.default.rawValue
+    @Environment(\.isWindowFullscreen) private var isWindowFullscreen
     @Environment(\.appAccent) private var accent
     @Environment(\.colorScheme) private var colorScheme
     @State private var isHovered = false
 
     private var windowMaterial: WindowBackgroundMaterial {
-        WindowBackgroundMaterial(rawValue: materialRaw) ?? .default
+        let stored = WindowBackgroundMaterial(rawValue: materialRaw) ?? .default
+        return stored.effective(whenFullscreen: isWindowFullscreen)
     }
 
     var body: some View {
