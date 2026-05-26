@@ -2,10 +2,12 @@ import SwiftUI
 
 struct AppBackground: View {
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.isWindowFullscreen) private var isWindowFullscreen
     @AppStorage("windowBackgroundMaterial") private var materialRaw = WindowBackgroundMaterial.default.rawValue
 
     private var material: WindowBackgroundMaterial {
-        WindowBackgroundMaterial(rawValue: materialRaw) ?? .default
+        let stored = WindowBackgroundMaterial(rawValue: materialRaw) ?? .default
+        return stored.effective(whenFullscreen: isWindowFullscreen)
     }
 
     var body: some View {

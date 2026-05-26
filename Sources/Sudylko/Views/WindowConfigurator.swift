@@ -5,6 +5,8 @@ import SwiftUI
 struct WindowConfigurator: NSViewRepresentable {
     let appearanceMode: AppearanceMode
     @Binding var isAppActive: Bool
+    @Binding var isWindowMiniaturized: Bool
+    @Binding var isWindowFullscreen: Bool
 
     func makeNSView(context: Context) -> ThemedWindowAnchor {
         let view = ThemedWindowAnchor()
@@ -13,6 +15,12 @@ struct WindowConfigurator: NSViewRepresentable {
         }
         view.onApplicationActiveChange = { active in
             isAppActive = active
+        }
+        view.onWindowMiniaturizedChange = { miniaturized in
+            isWindowMiniaturized = miniaturized
+        }
+        view.onWindowFullscreenChange = { fullscreen in
+            isWindowFullscreen = fullscreen
         }
         return view
     }
@@ -24,9 +32,17 @@ struct WindowConfigurator: NSViewRepresentable {
         nsView.onApplicationActiveChange = { active in
             isAppActive = active
         }
+        nsView.onWindowMiniaturizedChange = { miniaturized in
+            isWindowMiniaturized = miniaturized
+        }
+        nsView.onWindowFullscreenChange = { fullscreen in
+            isWindowFullscreen = fullscreen
+        }
         DispatchQueue.main.async {
             configure(nsView.window, mode: appearanceMode)
             isAppActive = NSApp.isActive
+            isWindowMiniaturized = nsView.window?.isMiniaturized ?? false
+            isWindowFullscreen = nsView.window?.styleMask.contains(.fullScreen) == true
         }
     }
 
@@ -48,15 +64,21 @@ struct WindowConfigurator: NSViewRepresentable {
 final class ThemedWindowAnchor: NSView {
     var onSystemAppearanceChange: (() -> Void)?
     var onApplicationActiveChange: ((Bool) -> Void)?
+    var onWindowMiniaturizedChange: ((Bool) -> Void)?
+    var onWindowFullscreenChange: ((Bool) -> Void)?
 
     private var themeObserver: NSObjectProtocol?
     private var appActiveObservers: [NSObjectProtocol] = []
+    private var windowMiniaturizeObservers: [NSObjectProtocol] = []
+    private var windowFullscreenObservers: [NSObjectProtocol] = []
     private static var installedAppActiveObservers = false
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         installThemeObserverIfNeeded()
         installApplicationActiveObserversIfNeeded()
+        installWindowMiniaturizeObserversIfNeeded()
+        installWindowFullscreenObserversIfNeeded()
     }
 
     private func installThemeObserverIfNeeded() {
@@ -91,9 +113,85 @@ final class ThemedWindowAnchor: NSView {
         onApplicationActiveChange?(NSApp.isActive)
     }
 
+    private func installWindowMiniaturizeObserversIfNeeded() {
+        for observer in windowMiniaturizeObservers {
+            NotificationCenter.default.removeObserver(observer)
+        }
+        windowMiniaturizeObservers.removeAll()
+
+        guard let window else {
+            onWindowMiniaturizedChange?(false)
+            return
+        }
+
+        let center = NotificationCenter.default
+        windowMiniaturizeObservers.append(center.addObserver(
+            forName: NSWindow.willMiniaturizeNotification,
+            object: window,
+            queue: .main
+        ) { [weak self] _ in
+            self?.onWindowMiniaturizedChange?(true)
+        })
+        windowMiniaturizeObservers.append(center.addObserver(
+            forName: NSWindow.didDeminiaturizeNotification,
+            object: window,
+            queue: .main
+        ) { [weak self] _ in
+            self?.onWindowMiniaturizedChange?(false)
+        })
+        onWindowMiniaturizedChange?(window.isMiniaturized)
+    }
+
+    private func installWindowFullscreenObserversIfNeeded() {
+        for observer in windowFullscreenObservers {
+            NotificationCenter.default.removeObserver(observer)
+        }
+        windowFullscreenObservers.removeAll()
+
+        guard let window else {
+            onWindowFullscreenChange?(false)
+            return
+        }
+
+        let center = NotificationCenter.default
+        let names: [Notification.Name] = [
+            NSWindow.willEnterFullScreenNotification,
+            NSWindow.didEnterFullScreenNotification,
+            NSWindow.willExitFullScreenNotification,
+            NSWindow.didExitFullScreenNotification,
+        ]
+        for name in names {
+            windowFullscreenObservers.append(center.addObserver(
+                forName: name,
+                object: window,
+                queue: .main
+            ) { [weak self] notification in
+                self?.handleWindowFullscreenNotification(notification)
+            })
+        }
+        onWindowFullscreenChange?(window.styleMask.contains(.fullScreen))
+    }
+
+    private func handleWindowFullscreenNotification(_ notification: Notification) {
+        switch notification.name {
+        case NSWindow.willEnterFullScreenNotification, NSWindow.didEnterFullScreenNotification:
+            onWindowFullscreenChange?(true)
+        case NSWindow.willExitFullScreenNotification, NSWindow.didExitFullScreenNotification:
+            onWindowFullscreenChange?(false)
+        default:
+            onWindowFullscreenChange?(window?.styleMask.contains(.fullScreen) == true)
+        }
+    }
+
     deinit {
         if let themeObserver {
             DistributedNotificationCenter.default().removeObserver(themeObserver)
+        }
+        for observer in windowMiniaturizeObservers {
+            NotificationCenter.default.removeObserver(observer)
+        }
+        for observer in windowFullscreenObservers {
+            NotificationCenter.default.removeObserver(observer)
         }
     }
 }

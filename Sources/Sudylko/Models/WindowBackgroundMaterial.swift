@@ -18,10 +18,28 @@ enum WindowBackgroundMaterial: String, Identifiable {
 
     static var `default`: Self { .translucent }
 
+    /// Fixed window transparency while fullscreen (slider preference still applies when not fullscreen).
+    static let fullscreenTransparencyPercent = 20
+
     var transparencyPercent: Int {
         let index = Self.displayOrder.firstIndex(of: self) ?? 0
         let last = max(1, Self.displayOrder.count - 1)
         return Int((Double(index) / Double(last)) * 100)
+    }
+
+    static func material(forTransparencyPercent percent: Int) -> WindowBackgroundMaterial {
+        let clamped = min(100, max(0, percent))
+        let last = max(1, displayOrder.count - 1)
+        let index = Int((Double(clamped) / 100.0 * Double(last)).rounded())
+        return displayOrder[min(max(0, index), last)]
+    }
+
+    private static var fullscreenOverride: Self {
+        material(forTransparencyPercent: fullscreenTransparencyPercent)
+    }
+
+    func effective(whenFullscreen isFullscreen: Bool) -> Self {
+        isFullscreen ? Self.fullscreenOverride : self
     }
 
     var nsMaterial: NSVisualEffectView.Material {

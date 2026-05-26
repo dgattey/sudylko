@@ -32,7 +32,7 @@ struct WindowBackgroundMaterialControl: View {
                 in: 0 ... Double(tickCount - 1),
                 step: 1
             )
-            .sudylkoFocusSuppressed()
+            .sudylkoSliderThumbAlwaysVisible()
         }
     }
 
@@ -45,5 +45,15 @@ struct WindowBackgroundMaterialControl: View {
             }
         )
     }
+}
 
+private extension View {
+    @ViewBuilder
+    func sudylkoSliderThumbAlwaysVisible() -> some View {
+        if #available(macOS 26, *) {
+            sliderThumbVisibility(.visible)
+        } else {
+            self
+        }
+    }
 }
