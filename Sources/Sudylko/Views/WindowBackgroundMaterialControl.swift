@@ -50,7 +50,7 @@ struct WindowBackgroundMaterialControl: View {
 private extension View {
     @ViewBuilder
     func sudylkoSliderThumbAlwaysVisible() -> some View {
-        if #available(macOS 26, *) {
+        if #available(macOS 26, iOS 26, *) {
             sliderThumbVisibility(.visible)
         } else {
             self
