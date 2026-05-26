@@ -79,7 +79,7 @@ enum AchievementID: String, Codable, Identifiable {
         case .cleanSheet: "Finish with zero mistakes"
         case .roughDraft: "Finish one puzzle with five or more mistakes"
         case .mistakeHundred: "Make one hundred mistakes total"
-        case .abandonedOnce: "Delete an in-progress saved game"
+        case .abandonedOnce: "Archive an in-progress saved game"
         case .trifecta: "Complete Easy, Medium, and Hard"
         case .pencilPusher: "Win after using pencil notes"
         case .livingDangerously: "Win a puzzle with eight or more mistakes"
@@ -169,6 +169,19 @@ enum AchievementStore {
         }
     }
 
+    static func recordImpossibleLoss(difficulty: GameDifficulty) {
+        var stats = loadStats()
+        stats.recordGameplayLoss(difficulty: difficulty)
+        saveStats(stats)
+    }
+
+    private static func markStatsCompletionRecorded(_ save: SavedGameState) {
+        guard !save.statsCompletionRecorded else { return }
+        var recorded = save
+        recorded.statsCompletionRecorded = true
+        GameSaveStore.save(recorded)
+    }
+
     static func recordAbandonedSave(difficulty: GameDifficulty) -> AchievementID? {
         var stats = loadStats()
         stats.recordLoss(difficulty: difficulty)
@@ -180,15 +193,34 @@ enum AchievementStore {
     }
 
     /// Records a finished puzzle into lifetime stats, then returns newly unlocked achievements.
-    static func recordCompletion(_ context: AchievementCompletionContext) -> [AchievementID] {
+    /// Returns an empty array when this save's win was already counted.
+    static func recordCompletion(
+        _ context: AchievementCompletionContext,
+        saveID: UUID
+    ) -> [AchievementID] {
+        guard let save = GameSaveStore.load(id: saveID), !save.statsCompletionRecorded else {
+            return []
+        }
+
         var stats = loadStats()
+        let beforeWon = stats[context.difficulty].won
         stats.recordWin(
             difficulty: context.difficulty,
             elapsedSeconds: context.elapsedSeconds,
             mistakesInPuzzle: context.mistakesInPuzzle,
             fromCustomSeed: context.startedFromCustomSeed
         )
+        let didIncrementWin = stats[context.difficulty].won > beforeWon
+        guard didIncrementWin else {
+            if save.isComplete {
+                markStatsCompletionRecorded(save)
+            }
+            return []
+        }
+
         saveStats(stats)
+        markStatsCompletionRecorded(save)
+
         return newlyUnlocked(for: context, stats: stats)
     }
 

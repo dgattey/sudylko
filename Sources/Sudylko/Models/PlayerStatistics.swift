@@ -8,9 +8,18 @@ struct DifficultyPlayerStats: Codable, Equatable {
     var bestWinSeconds: Double?
     var mistakes: Int = 0
 
+    /// Wins capped to started for display (handles legacy corrupt counters).
+    var displayWon: Int { min(won, started) }
+
     var averageWinSeconds: Double? {
         guard won > 0 else { return nil }
         return totalWinSeconds / Double(won)
+    }
+
+    /// Win share in `[0, 100]` for charts and labels.
+    var winRatePercent: Double {
+        guard started > 0 else { return 0 }
+        return min(100, Double(displayWon) / Double(started) * 100)
     }
 }
 
@@ -81,6 +90,9 @@ struct PlayerLifetimeStats: Codable, Equatable {
         mistakesInPuzzle: Int,
         fromCustomSeed: Bool
     ) {
+        var bucket = self[difficulty]
+        guard bucket.started > bucket.won else { return }
+
         completionCount += 1
         switch difficulty {
         case .easy: completedEasy = true
@@ -88,7 +100,6 @@ struct PlayerLifetimeStats: Codable, Equatable {
         case .hard: completedHard = true
         }
 
-        var bucket = self[difficulty]
         bucket.won += 1
         bucket.totalWinSeconds += elapsedSeconds
         if let best = bucket.bestWinSeconds {
@@ -99,7 +110,40 @@ struct PlayerLifetimeStats: Codable, Equatable {
         bucket.mistakes += mistakesInPuzzle
         self[difficulty] = bucket
 
-        if fromCustomSeed { customSeedWon += 1 }
+        if fromCustomSeed, customSeedWon < customSeedStarted {
+            customSeedWon += 1
+        }
+    }
+
+    /// Clamps corrupt per-difficulty counters so won and lost never exceed started.
+    mutating func repairInvariants() {
+        var easyBucket = easy
+        var mediumBucket = medium
+        var hardBucket = hard
+        repairBucket(&easyBucket)
+        repairBucket(&mediumBucket)
+        repairBucket(&hardBucket)
+        easy = easyBucket
+        medium = mediumBucket
+        hard = hardBucket
+        customSeedWon = min(customSeedWon, customSeedStarted)
+        completionCount = totalWon
+        if gamesStartedCount < totalStarted {
+            gamesStartedCount = totalStarted
+        }
+    }
+
+    private mutating func repairBucket(_ bucket: inout DifficultyPlayerStats) {
+        if bucket.won > bucket.started {
+            bucket.won = bucket.started
+        }
+        if bucket.lost > bucket.started {
+            bucket.lost = bucket.started
+        }
+        let accounted = bucket.won + bucket.lost
+        if accounted > bucket.started {
+            bucket.lost = max(0, bucket.started - bucket.won)
+        }
     }
 
     mutating func recordMistake(difficulty: GameDifficulty) {
@@ -116,6 +160,12 @@ struct PlayerLifetimeStats: Codable, Equatable {
         self[difficulty] = bucket
     }
 
+    mutating func recordGameplayLoss(difficulty: GameDifficulty) {
+        var bucket = self[difficulty]
+        bucket.lost += 1
+        self[difficulty] = bucket
+    }
+
 }
 
 enum PlayerStatsStore {
@@ -123,13 +173,20 @@ enum PlayerStatsStore {
 
     static func load() -> PlayerLifetimeStats {
         guard let data = UserDefaults.standard.data(forKey: statsKey),
-              let stats = try? JSONDecoder().decode(PlayerLifetimeStats.self, from: data) else {
+              var stats = try? JSONDecoder().decode(PlayerLifetimeStats.self, from: data) else {
             return PlayerLifetimeStats()
+        }
+        let repaired = stats
+        stats.repairInvariants()
+        if stats != repaired {
+            save(stats)
         }
         return stats
     }
 
     static func save(_ stats: PlayerLifetimeStats) {
+        var stats = stats
+        stats.repairInvariants()
         guard let data = try? JSONEncoder().encode(stats) else { return }
         UserDefaults.standard.set(data, forKey: statsKey)
         NotificationCenter.default.post(name: .achievementsDidChange, object: nil)
