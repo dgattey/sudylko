@@ -11,16 +11,18 @@ Sudylko is an offline puzzle game for macOS, built with SwiftUI. Puzzles are gen
 
 This repo is a Swift Package Manager app, not a web or Xcode-project monorepo.
 
-| Path | Role |
-|------|------|
-| `Sources/Sudylko/` | Main app (SwiftUI, menus, saves, achievements) |
-| `Sources/SudylkoShared/` | Shared types and dock icon rendering |
-| `Sources/SudylkoIconExport/` | CLI that renders `App/Icon.icns` at build time |
-| `Sources/Sudylko/Engine/` | `PuzzleGenerator`, `PuzzleSeed`, `SeededRNG` |
-| `App/Info.plist` | Bundle metadata (`com.sudylko.mac`) |
-| `scripts/build-app.sh` | Default build, icon, assemble `.app`, launch |
-| `scripts/generate-app-icon.sh` | Icon pipeline wrapper |
-| `Sudylko.app` | Assembled debug bundle (gitignored) |
+
+| Path                           | Role                                           |
+| ------------------------------ | ---------------------------------------------- |
+| `Sources/Sudylko/`             | Main app (SwiftUI, menus, saves, achievements) |
+| `Sources/SudylkoShared/`       | Shared types and dock icon rendering           |
+| `Sources/SudylkoIconExport/`   | CLI that renders `App/Icon.icns` at build time |
+| `Sources/Sudylko/Engine/`      | `PuzzleGenerator`, `PuzzleSeed`, `SeededRNG`   |
+| `App/Info.plist`               | Bundle metadata (`com.sudylko.mac`)            |
+| `scripts/build-app.sh`         | Default build, icon, assemble `.app`, launch   |
+| `scripts/generate-app-icon.sh` | Icon pipeline wrapper                          |
+| `Sudylko.app`                  | Assembled debug bundle (gitignored)            |
+
 
 ## Build and run
 
@@ -72,9 +74,11 @@ Accent and light/dark appearance affect the generated icon. Re-run `build-app.sh
 
 ### Home and game navigation
 
-Home and in-game views are siblings in a **`ZStack`**, not a `NavigationStack` push. `NavigationStack` caused a solid toolbar on home, duplicate back buttons, and the game view drawing over home content.
+Home and in-game views are siblings in a `**ZStack`**, not a `NavigationStack` push. `NavigationStack` caused a solid toolbar on home, duplicate back buttons, and the game view drawing over home content.
 
-Transitions use `detailPush` in `ThemedWindowToolbar.swift`. There is a single back control in `GamePlayView`.
+The app shell is `NavigationSplitView`: sidebar (saves) | detail (home or active game). On home, `HomeView` fills the detail column with new-puzzle tiles and compact progress summary cards. `ContentView` presents an attached trailing inspector via SwiftUI’s `.inspector(isPresented:content:)` (macOS 14+): native resize handle, window chrome, not an in-layout `HStack` column. The inspector hosts `HomeProgressPaneView`, which shows either `PlayerStatsView` or `AchievementsListView` depending on which summary card is selected. Summary cards toggle the inspector section; the inspector is hidden while a game is active. See `ContentView.swift`, `HomeView.swift`, and `HomeProgressPaneView.swift`.
+
+Home ↔ game transitions use a `ZStack` crossfade in `ContentView` (not `NavigationStack` push). There is a single back control in the detail toolbar while in-game.
 
 ### Toolbar
 
@@ -122,18 +126,20 @@ Lifetime data lives separately from save files:
 - Unlocked achievements: `achievementUnlockedIDs`
 - Stats: `achievementLifetimeStats` (`PlayerLifetimeStats`)
 
-Deleting a save does not remove achievements or lifetime stats. Abandoned in-progress deletes increment loss stats and can unlock achievements.
+Archiving a save does not remove achievements or lifetime stats. Abandoned in-progress archives increment loss stats and can unlock achievements.
 
 Achievement order in the UI and Debug menu is `AchievementID.displayOrder` (easier / earlier first).
 
 ### Debug menu actions
 
-| Item | Effect |
-|------|--------|
-| Unlock achievement | Unlocks one achievement and shows celebration |
-| Reset achievements | Clears unlock IDs only |
-| Reset stats | Clears lifetime stats only |
-| Delete all saves | Removes all save blobs and index; returns home if in a game |
+
+| Item               | Effect                                                      |
+| ------------------ | ----------------------------------------------------------- |
+| Unlock achievement | Unlocks one achievement and shows celebration               |
+| Reset achievements | Clears unlock IDs only                                      |
+| Reset stats        | Clears lifetime stats only                                  |
+| Delete all saves   | Removes all save blobs and index; returns home if in a game |
+
 
 ## Verifying changes
 
@@ -153,3 +159,4 @@ User-attached screenshots under the Cursor workspace `assets/` folder are the gr
 - Large navigation or window-chrome changes deserve a design pass before coding. The `NavigationStack` detour in this repo required multiple user-reported regressions to unwind.
 - When fixing macOS menu shortcuts, assume SwiftUI will rebuild menus. Fix the rebuild loop, do not stack multiple partial patches.
 - Pin App Store / sandbox constraints before implementing icon or bundle mutation features.
+
