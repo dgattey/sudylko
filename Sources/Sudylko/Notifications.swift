@@ -1,5 +1,9 @@
 import Foundation
 
+enum SavesChangeReason {
+    case deleteAll
+}
+
 extension Notification.Name {
     static let openSettings = Notification.Name("SudylkoOpenSettings")
     static let sudylkoSystemThemeDidChange = Notification.Name("SudylkoSystemThemeDidChange")
@@ -12,5 +16,15 @@ extension Notification.Name {
     static let savesDidChange = Notification.Name("SudylkoSavesDidChange")
     #if DEBUG
     static let debugAchievementUnlocked = Notification.Name("SudylkoDebugAchievementUnlocked")
+    static let debugTriggerPulse = Notification.Name("SudylkoDebugTriggerPulse")
     #endif
 }
+
+#if DEBUG
+enum DebugPulseKind {
+    case puzzleComplete
+    case finishedRow
+    case finishedColumn
+    case finishedBox
+}
+#endif
