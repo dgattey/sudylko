@@ -8,6 +8,11 @@ struct CellView: View {
     @Environment(\.appAccent) private var accent
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.isAppActive) private var isAppActive
+    @AppStorage("hideNumbersWhenInactive") private var hideNumbersWhenInactive = true
+
+    private var showsCellContent: Bool {
+        isAppActive || !hideNumbersWhenInactive
+    }
 
     private var accentColor: Color { accent.interactiveForeground(for: colorScheme) }
 
@@ -43,7 +48,7 @@ struct CellView: View {
     var body: some View {
         ZStack {
             backgroundLayer
-            if isAppActive {
+            if showsCellContent {
                 if let value {
                     Text("\(value)")
                         .font(digitFontStyle.font(
@@ -56,7 +61,7 @@ struct CellView: View {
                 }
             }
         }
-        .animation(.easeInOut(duration: 0.2), value: isAppActive)
+        .animation(.easeInOut(duration: 0.2), value: showsCellContent)
         .frame(width: cellSize, height: cellSize)
         .contentShape(Rectangle())
         .onTapGesture {
