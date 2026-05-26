@@ -3,7 +3,7 @@ import SwiftUI
 struct SaveRowView: View {
     let slot: SaveSlotSummary
     let displayTime: String
-    var onDeleteTap: () -> Void
+    var onArchiveTap: () -> Void
 
     @Environment(\.digitFontStyle) private var digitFontStyle
     @State private var isHovered = false
@@ -17,7 +17,7 @@ struct SaveRowView: View {
             }
             Spacer(minLength: 4)
             if isHovered {
-                SidebarDeleteButton(action: onDeleteTap)
+                SidebarArchiveButton(action: onArchiveTap)
                     .transition(.opacity.combined(with: .scale(scale: 0.9)))
             }
             Text(displayTime)

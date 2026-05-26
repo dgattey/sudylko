@@ -4,21 +4,39 @@ struct AppSidebar: View {
     @Binding var activeSaveID: UUID?
     var isInGame: Bool
     var saveSlots: [SaveSlotSummary]
+    var saveSlotsRevision: Int
     @ObservedObject var liveTimer: PuzzleTimer
     var onNewGame: () -> Void
     var onSelectSave: (UUID) -> Void
-    var onDeleteSave: (UUID) -> Void
+    var onArchiveSave: (UUID) -> Void
 
-    @State private var savePendingDeletion: SaveSlotSummary?
+    @State private var savePendingArchive: SaveSlotSummary?
+
+    @AppStorage("sidebarDoneGamesCollapsed") private var doneGamesCollapsed = true
+    @AppStorage("sidebarArchivedGamesCollapsed") private var archivedGamesCollapsed = false
 
     @AppStorage("windowBackgroundMaterial") private var materialRaw = WindowBackgroundMaterial.default.rawValue
+    @Environment(\.isWindowFullscreen) private var isWindowFullscreen
     @Environment(\.digitFontStyle) private var digitFontStyle
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.appAccent) private var accent
     @Environment(\.appAccentProminentTint) private var prominentTint
 
     private var windowMaterial: WindowBackgroundMaterial {
-        WindowBackgroundMaterial(rawValue: materialRaw) ?? .default
+        let stored = WindowBackgroundMaterial(rawValue: materialRaw) ?? .default
+        return stored.effective(whenFullscreen: isWindowFullscreen)
+    }
+
+    private var activeSaveSlots: [SaveSlotSummary] {
+        saveSlots.filter { !$0.isArchived && !$0.isComplete }
+    }
+
+    private var doneSaveSlots: [SaveSlotSummary] {
+        saveSlots.filter { !$0.isArchived && $0.isComplete }
+    }
+
+    private var archivedSaveSlots: [SaveSlotSummary] {
+        saveSlots.filter(\.isArchived)
     }
 
     var body: some View {
@@ -59,58 +77,92 @@ struct AppSidebar: View {
         .glassSidebar(accent: accent, colorScheme: colorScheme, material: windowMaterial)
         .id("sidebar-glass-\(colorScheme)-\(materialRaw)")
         .confirmationDialog(
-            deleteDialogTitle,
-            isPresented: deleteDialogPresented,
+            archiveDialogTitle,
+            isPresented: archiveDialogPresented,
             titleVisibility: .visible
         ) {
-            Button("Delete", role: .destructive) {
-                if let id = savePendingDeletion?.id {
-                    onDeleteSave(id)
+            Button("Archive", role: .destructive) {
+                if let id = savePendingArchive?.id {
+                    onArchiveSave(id)
                 }
-                savePendingDeletion = nil
+                savePendingArchive = nil
             }
             Button("Cancel", role: .cancel) {
-                savePendingDeletion = nil
+                savePendingArchive = nil
             }
         } message: {
-            Text("This saved game will be permanently removed.")
+            Text("This game moves to Archived games. You can open it from there later.")
         }
     }
 
     private var savesList: some View {
         List {
             Section("Existing games") {
-                if saveSlots.isEmpty {
+                if activeSaveSlots.isEmpty {
                     Text("No saved games")
                         .foregroundStyle(.secondary)
                         .listRowInsets(SidebarMetrics.saveRowInsets)
                         .listRowBackground(Color.clear)
                 } else {
-                    ForEach(saveSlots, id: \.id) { slot in
-                        SaveRowView(
-                            slot: slot,
-                            displayTime: displayTime(for: slot),
-                            onDeleteTap: { savePendingDeletion = slot }
-                        )
-                        .id(slot.id)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .contentShape(Rectangle())
-                        .onTapGesture {
-                            onSelectSave(slot.id)
-                        }
-                        .listRowInsets(SidebarMetrics.saveRowInsets)
-                        .listRowBackground(
-                            rowBackground(isSelected: activeSaveID == slot.id)
-                        )
-                        .listRowSeparator(.hidden)
+                    ForEach(activeSaveSlots, id: \.id) { slot in
+                        saveRow(slot)
                     }
                 }
             }
+
+            if !doneSaveSlots.isEmpty {
+                Section {
+                    if !doneGamesCollapsed {
+                        ForEach(doneSaveSlots, id: \.id) { slot in
+                            saveRow(slot)
+                        }
+                    }
+                } header: {
+                    CollapsibleSidebarSectionHeader(
+                        title: "Done games",
+                        isCollapsed: $doneGamesCollapsed
+                    )
+                }
+            }
+
+            if !archivedSaveSlots.isEmpty {
+                Section {
+                    if !archivedGamesCollapsed {
+                        ForEach(archivedSaveSlots, id: \.id) { slot in
+                            saveRow(slot)
+                        }
+                    }
+                } header: {
+                    CollapsibleSidebarSectionHeader(
+                        title: "Archived games",
+                        isCollapsed: $archivedGamesCollapsed
+                    )
+                }
+            }
         }
+        .id(saveSlotsRevision)
         .listStyle(.sidebar)
         .scrollContentBackground(.hidden)
         .contentMargins(.horizontal, SidebarMetrics.horizontalPadding, for: .scrollContent)
         .frame(maxHeight: .infinity)
+    }
+
+    private func saveRow(_ slot: SaveSlotSummary) -> some View {
+        Button {
+            onSelectSave(slot.id)
+        } label: {
+            SaveRowView(
+                slot: slot,
+                displayTime: displayTime(for: slot),
+                onArchiveTap: { savePendingArchive = slot }
+            )
+        }
+        .buttonStyle(.plain)
+        .id(slot.id)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .listRowInsets(SidebarMetrics.saveRowInsets)
+        .listRowBackground(rowBackground(isSelected: activeSaveID == slot.id))
+        .listRowSeparator(.hidden)
     }
 
     @ViewBuilder
@@ -128,17 +180,17 @@ struct AppSidebar: View {
         }
     }
 
-    private var deleteDialogTitle: String {
-        if let slot = savePendingDeletion {
-            return "Delete \(slot.gameTitle)?"
+    private var archiveDialogTitle: String {
+        if let slot = savePendingArchive {
+            return "Archive \(slot.gameTitle)?"
         }
-        return "Delete save?"
+        return "Archive save?"
     }
 
-    private var deleteDialogPresented: Binding<Bool> {
+    private var archiveDialogPresented: Binding<Bool> {
         Binding(
-            get: { savePendingDeletion != nil },
-            set: { if !$0 { savePendingDeletion = nil } }
+            get: { savePendingArchive != nil },
+            set: { if !$0 { savePendingArchive = nil } }
         )
     }
 
@@ -147,5 +199,32 @@ struct AppSidebar: View {
             return liveTimer.formattedElapsed
         }
         return PuzzleTimer.format(slot.elapsedSeconds)
+    }
+}
+
+/// Collapsible header for Done / Archived sections; matches plain `Section("…")` title placement.
+private struct CollapsibleSidebarSectionHeader: View {
+    let title: String
+    @Binding var isCollapsed: Bool
+
+    var body: some View {
+        Button {
+            withAnimation(.easeOut(duration: 0.15)) {
+                isCollapsed.toggle()
+            }
+        } label: {
+            HStack(spacing: 0) {
+                Text(title)
+                    .foregroundStyle(.secondary)
+                Spacer(minLength: 0)
+                Image(systemName: isCollapsed ? "chevron.right" : "chevron.down")
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundStyle(.tertiary)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .animation(.easeOut(duration: 0.15), value: isCollapsed)
     }
 }
