@@ -39,6 +39,20 @@ struct AppSidebar: View {
         saveSlots.filter(\.isArchived)
     }
 
+    private var doneGamesExpanded: Binding<Bool> {
+        Binding(
+            get: { !doneGamesCollapsed },
+            set: { doneGamesCollapsed = !$0 }
+        )
+    }
+
+    private var archivedGamesExpanded: Binding<Bool> {
+        Binding(
+            get: { !archivedGamesCollapsed },
+            set: { archivedGamesCollapsed = !$0 }
+        )
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             Text("Sudylko")
@@ -75,6 +89,9 @@ struct AppSidebar: View {
         .frame(width: SidebarMetrics.width)
         .frame(maxHeight: .infinity, alignment: .top)
         .glassSidebar(accent: accent, colorScheme: colorScheme, material: windowMaterial)
+        #if os(macOS)
+        .safeAreaPadding(.vertical, SidebarMetrics.columnEdgePadding)
+        #endif
         .id("sidebar-glass-\(colorScheme)-\(materialRaw)")
         .confirmationDialog(
             archiveDialogTitle,
@@ -111,32 +128,18 @@ struct AppSidebar: View {
             }
 
             if !doneSaveSlots.isEmpty {
-                Section {
-                    if !doneGamesCollapsed {
-                        ForEach(doneSaveSlots, id: \.id) { slot in
-                            saveRow(slot)
-                        }
+                Section("Done games", isExpanded: doneGamesExpanded) {
+                    ForEach(doneSaveSlots, id: \.id) { slot in
+                        saveRow(slot)
                     }
-                } header: {
-                    CollapsibleSidebarSectionHeader(
-                        title: "Done games",
-                        isCollapsed: $doneGamesCollapsed
-                    )
                 }
             }
 
             if !archivedSaveSlots.isEmpty {
-                Section {
-                    if !archivedGamesCollapsed {
-                        ForEach(archivedSaveSlots, id: \.id) { slot in
-                            saveRow(slot)
-                        }
+                Section("Archived games", isExpanded: archivedGamesExpanded) {
+                    ForEach(archivedSaveSlots, id: \.id) { slot in
+                        saveRow(slot)
                     }
-                } header: {
-                    CollapsibleSidebarSectionHeader(
-                        title: "Archived games",
-                        isCollapsed: $archivedGamesCollapsed
-                    )
                 }
             }
         }
@@ -144,6 +147,9 @@ struct AppSidebar: View {
         .listStyle(.sidebar)
         .scrollContentBackground(.hidden)
         .contentMargins(.horizontal, SidebarMetrics.horizontalPadding, for: .scrollContent)
+        #if os(macOS)
+        .contentMargins(.vertical, SidebarMetrics.columnScrollContentMargin, for: .scrollContent)
+        #endif
         .frame(maxHeight: .infinity)
     }
 
@@ -202,29 +208,3 @@ struct AppSidebar: View {
     }
 }
 
-/// Collapsible header for Done / Archived sections; matches plain `Section("…")` title placement.
-private struct CollapsibleSidebarSectionHeader: View {
-    let title: String
-    @Binding var isCollapsed: Bool
-
-    var body: some View {
-        Button {
-            withAnimation(.easeOut(duration: 0.15)) {
-                isCollapsed.toggle()
-            }
-        } label: {
-            HStack(spacing: 0) {
-                Text(title)
-                    .foregroundStyle(.secondary)
-                Spacer(minLength: 0)
-                Image(systemName: isCollapsed ? "chevron.right" : "chevron.down")
-                    .font(.system(size: 9, weight: .bold))
-                    .foregroundStyle(.tertiary)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .animation(.easeOut(duration: 0.15), value: isCollapsed)
-    }
-}

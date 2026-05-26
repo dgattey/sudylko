@@ -8,24 +8,29 @@ struct HomeProgressPaneView: View {
         Group {
             switch section {
             case .statistics:
-                ScrollView {
+                progressScroll {
                     PlayerStatsView()
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.vertical, 4)
                 }
-                .scrollIndicators(.visible)
             case .achievements:
-                ScrollView {
+                progressScroll {
                     AchievementsListView()
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.vertical, 4)
                 }
-                .scrollIndicators(.visible)
             case nil:
                 EmptyView()
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private func progressScroll<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        ScrollView {
+            content()
+        }
+        .scrollIndicators(.visible)
     }
 }
 

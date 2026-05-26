@@ -65,4 +65,11 @@ enum SidebarMetrics {
         let vertical = saveRowContentPadding + saveRowInterItemGap / 2
         return EdgeInsets(top: vertical, leading: 0, bottom: vertical, trailing: 0)
     }
+
+    #if os(macOS)
+    /// Scroll content inset inside NavigationSplitView’s rounded sidebar column.
+    static let columnScrollContentMargin: CGFloat = 10
+    /// Fixed chrome inset for header/footer above the scrolling list.
+    static let columnEdgePadding: CGFloat = 8
+    #endif
 }

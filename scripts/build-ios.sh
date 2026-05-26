@@ -5,10 +5,10 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
 SCHEME="${SCHEME:-Sudylko}"
-DESTINATION="${DESTINATION:-platform=iOS Simulator,name=iPhone 16,OS=latest}"
+DESTINATION="${DESTINATION:-platform=iOS Simulator,name=iPhone 17 Pro,OS=26.5}"
 DERIVED="${DERIVED:-$ROOT/.build/DerivedData-iOS}"
 
-echo "Building $SCHEME for $DESTINATION…"
+echo "Building $SCHEME for $DESTINATION..."
 xcodebuild \
   -scheme "$SCHEME" \
   -destination "$DESTINATION" \

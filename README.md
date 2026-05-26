@@ -24,6 +24,9 @@ This repo is a Swift Package Manager app, not a web or Xcode-project monorepo.
 | `scripts/generate-app-icon.sh` | Icon pipeline wrapper                          |
 | `Sudylko.app`                  | Assembled debug bundle (gitignored)            |
 | `iOS/Info.plist`               | Reference bundle metadata (`com.sudylko.ios`)  |
+| `scripts/relaunch-mac.sh`      | Rebuild `.app`, quit, `open -n` (macOS verify loop) |
+| `scripts/relaunch-ios.sh`      | `xcodebuild`, install, launch on default simulator   |
+| `scripts/relaunch-all.sh`      | macOS then iOS relaunch in one command               |
 | `scripts/build-ios.sh`         | Optional `xcodebuild` helper for iOS Simulator   |
 
 
@@ -42,6 +45,25 @@ The script:
 4. Quits any running Sudylko and opens a fresh instance with `open -n`.
 
 Use this script as the default verify loop after UI or behavior changes. A bare `open Sudylko.app` without rebuilding can show stale code.
+
+## Quick relaunch (dev workflow)
+
+After **macOS-only** changes (menus, dock icon, Mac-only views):
+
+```bash
+./scripts/relaunch-mac.sh
+```
+
+After **iOS-only** or **shared SwiftUI** (`SudylkoShared`, views on both platforms), relaunch iOS or both:
+
+```bash
+./scripts/relaunch-ios.sh
+./scripts/relaunch-all.sh
+```
+
+`relaunch-mac.sh` runs `swift build -c debug`, assembles `Sudylko.app`, regenerates the icon, quits Sudylko, and opens a fresh instance with `open -n`. `relaunch-ios.sh` builds the **Sudylko** scheme for **iPhone 17 Pro (iOS 26.5)** by default, installs the `.app` on that simulator, and launches `com.sudylko.ios`. Override with `DESTINATION` or `SIM_UDID` if needed.
+
+
 
 ### Debug vs release
 
