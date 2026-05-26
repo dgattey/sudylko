@@ -1,3 +1,4 @@
+#if os(macOS)
 import AppKit
 import Foundation
 import SwiftUI
@@ -35,3 +36,14 @@ enum SudylkoIconExport {
         DockIconRenderer.exportIconSet(to: url, accent: accent, colorScheme: colorScheme)
     }
 }
+#else
+import Foundation
+
+@main
+enum SudylkoIconExport {
+    static func main() {
+        fputs("error: SudylkoIconExport is macOS-only\n", stderr)
+        exit(1)
+    }
+}
+#endif

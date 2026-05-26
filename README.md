@@ -1,10 +1,11 @@
-# Sudylko (macOS)
+# Sudylko
 
-Sudylko is an offline puzzle game for macOS, built with SwiftUI. Puzzles are generated locally from a puzzle number and difficulty (e.g. `#1384` on Medium). Custom puzzles use the number plus the difficulty picker in the sheet, not a suffix in the string.
+Sudylko is an offline puzzle game for macOS and iOS, built with SwiftUI. Puzzles are generated locally from a puzzle number and difficulty (e.g. `#1384` on Medium). Custom puzzles use the number plus the difficulty picker in the sheet, not a suffix in the string.
 
 ## Requirements
 
-- macOS 14+
+- macOS 14+ (primary desktop build)
+- iOS 17+ (iPhone and iPad via Xcode)
 - Xcode 15+ or Swift 5.9+ toolchain
 
 ## Project layout
@@ -22,9 +23,11 @@ This repo is a Swift Package Manager app, not a web or Xcode-project monorepo.
 | `scripts/build-app.sh`         | Default build, icon, assemble `.app`, launch   |
 | `scripts/generate-app-icon.sh` | Icon pipeline wrapper                          |
 | `Sudylko.app`                  | Assembled debug bundle (gitignored)            |
+| `iOS/Info.plist`               | Reference bundle metadata (`com.sudylko.ios`)  |
+| `scripts/build-ios.sh`         | Optional `xcodebuild` helper for iOS Simulator   |
 
 
-## Build and run
+## Build and run (macOS)
 
 ```bash
 cd ~/repos/sudylko
@@ -52,6 +55,40 @@ swift build -c release
 
 There is no separate release packaging script yet. Distribution builds should use `-c release` and must not rely on the Debug menu.
 
+## Build and run (iOS)
+
+The same Swift package builds an iOS app when opened in Xcode:
+
+1. Open `Package.swift` in Xcode (File → Open).
+2. Select the **Sudylko** scheme and an **iPhone** or **iPad** simulator (or a connected device).
+3. Run (⌘R).
+
+Install the **iOS** platform in Xcode → Settings → Components if no simulator destinations appear.
+
+Optional CLI build (requires a working Simulator destination):
+
+```bash
+./scripts/build-ios.sh
+```
+
+Override the simulator with `DESTINATION`, for example:
+
+```bash
+DESTINATION='platform=iOS Simulator,name=iPhone 15' ./scripts/build-ios.sh
+```
+
+### iOS vs macOS behavior
+
+| Area | macOS | iOS |
+|------|--------|-----|
+| Entry | `SudylkoApp.swift` + app delegate | `SudylkoApp+iOS.swift` |
+| Keyboard play | `BoardKeyboardHost` (digits, undo, space) | On-screen number pad |
+| Home progress | Trailing `.inspector` | Sheet with `HomeProgressPaneView` |
+| Dock / menu icon | `DockIconRenderer` + `SudylkoIconExport` | Not used (stubs in `DockIconRenderer+iOS.swift`) |
+| Window chrome | `WindowConfigurator`, unified toolbar | Standard navigation; sidebar collapses in-game |
+
+Saves, achievements, puzzle generation, and settings use the same `UserDefaults` keys on both platforms.
+
 ## App Store and signing constraints
 
 Sudylko is intended for Mac App Store distribution eventually. Avoid approaches that mutate the signed bundle at runtime or use non–App Store–eligible plugins.
@@ -76,7 +113,7 @@ Accent and light/dark appearance affect the generated icon. Re-run `build-app.sh
 
 Home and in-game views are siblings in a `**ZStack`**, not a `NavigationStack` push. `NavigationStack` caused a solid toolbar on home, duplicate back buttons, and the game view drawing over home content.
 
-The app shell is `NavigationSplitView`: sidebar (saves) | detail (home or active game). On home, `HomeView` fills the detail column with new-puzzle tiles and compact progress summary cards. `ContentView` presents an attached trailing inspector via SwiftUI’s `.inspector(isPresented:content:)` (macOS 14+): native resize handle, window chrome, not an in-layout `HStack` column. The inspector hosts `HomeProgressPaneView`, which shows either `PlayerStatsView` or `AchievementsListView` depending on which summary card is selected. Summary cards toggle the inspector section; the inspector is hidden while a game is active. See `ContentView.swift`, `HomeView.swift`, and `HomeProgressPaneView.swift`.
+The app shell is `NavigationSplitView`: sidebar (saves) | detail (home or active game). On home, `HomeView` fills the detail column with new-puzzle tiles and compact progress summary cards. On macOS, `ContentView` presents an attached trailing inspector via SwiftUI’s `.inspector(isPresented:content:)` (macOS 14+). On iOS, the same content appears in a sheet (`HomeProgressPresentationModifier`). The pane hosts `HomeProgressPaneView` (statistics or achievements). Summary cards toggle the pane; it closes when a game is active. See `ContentView.swift`, `HomeView.swift`, and `HomeProgressPaneView.swift`.
 
 Home ↔ game transitions use a `ZStack` crossfade in `ContentView` (not `NavigationStack` push). There is a single back control in the detail toolbar while in-game.
 

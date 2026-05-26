@@ -1,5 +1,6 @@
-import AppKit
 import SwiftUI
+#if os(macOS)
+import AppKit
 
 /// Attaches a native `toolTip` to the nearest AppKit control (toolbar buttons sometimes skip SwiftUI `.help`).
 struct ToolbarTooltipInstaller: NSViewRepresentable {
@@ -42,11 +43,16 @@ struct ToolbarTooltipInstaller: NSViewRepresentable {
         }
     }
 }
+#endif
 
 extension View {
-    /// Standard macOS hover tool tip; also wires AppKit `toolTip` for toolbar controls.
+    /// Standard macOS hover tool tip; on iOS uses SwiftUI `.help` only.
     func macOSTooltip(_ text: String) -> some View {
+        #if os(macOS)
         help(text)
             .background(ToolbarTooltipInstaller(text: text))
+        #else
+        help(text)
+        #endif
     }
 }

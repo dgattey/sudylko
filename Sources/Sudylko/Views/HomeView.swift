@@ -256,10 +256,17 @@ private struct HomeProgressSummaryCard: View {
     }
 
     private var accessibilityHint: String {
+        #if os(iOS)
+        if isSelected {
+            return "Closes \(title.lowercased())"
+        }
+        return "Opens \(title.lowercased())"
+        #else
         if isSelected {
             return "Closes the \(title.lowercased()) inspector"
         }
         return "Opens \(title.lowercased()) in the progress inspector"
+        #endif
     }
 
     private func winRatePercent(won: Int, of total: Int) -> Int {

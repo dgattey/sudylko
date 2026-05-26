@@ -12,11 +12,17 @@ struct AppBackground: View {
 
     var body: some View {
         ZStack {
+            #if os(macOS)
             VisualEffectBackground(
                 material: material.nsMaterial,
                 blendingMode: .behindWindow,
                 colorScheme: colorScheme
             )
+            #else
+            Rectangle()
+                .fill(.clear)
+                .background(material.swiftUIMaterial)
+            #endif
             if colorScheme == .dark {
                 Color.black.opacity(darkOverlayOpacity)
             }

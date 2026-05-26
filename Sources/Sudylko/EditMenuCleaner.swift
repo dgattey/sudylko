@@ -1,3 +1,4 @@
+#if os(macOS)
 import AppKit
 
 enum EditMenuCleaner {
@@ -71,3 +72,4 @@ enum EditMenuCleaner {
         }
     }
 }
+#endif

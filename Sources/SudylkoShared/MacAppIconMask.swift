@@ -1,3 +1,4 @@
+#if os(macOS)
 import AppKit
 import SwiftUI
 
@@ -105,3 +106,4 @@ public enum MacAppIconMask {
         return swiftUIPath.cgPath.copy(using: &transform) ?? swiftUIPath.cgPath
     }
 }
+#endif

@@ -1,5 +1,7 @@
-import AppKit
 import SwiftUI
+#if canImport(AppKit)
+import AppKit
+#endif
 
 public enum AppAccentColor: String, CaseIterable, Identifiable, Sendable {
     case blue
@@ -80,7 +82,9 @@ public enum AppAccentColor: String, CaseIterable, Identifiable, Sendable {
         }
     }
 
+    #if canImport(AppKit)
     public func nsAccentForeground(for colorScheme: ColorScheme) -> NSColor {
         NSColor(interactiveForeground(for: colorScheme))
     }
+    #endif
 }

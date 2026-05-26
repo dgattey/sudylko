@@ -1,3 +1,4 @@
+#if os(macOS)
 import SwiftUI
 import SudylkoShared
 
@@ -133,3 +134,4 @@ struct SudylkoApp: App {
         }
     }
 }
+#endif

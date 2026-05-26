@@ -1,3 +1,4 @@
+#if os(macOS)
 import AppKit
 import Foundation
 
@@ -58,3 +59,4 @@ enum SudylkoKeyEvent {
     }
 
 }
+#endif

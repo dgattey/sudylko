@@ -1,5 +1,7 @@
-import AppKit
 import SwiftUI
+#if canImport(AppKit)
+import AppKit
+#endif
 
 enum AppearanceMode: String, CaseIterable, Identifiable {
     case system
@@ -24,6 +26,7 @@ enum AppearanceMode: String, CaseIterable, Identifiable {
         }
     }
 
+    #if os(macOS)
     /// `nil` for system mode so the window follows macOS instead of keeping a forced prior theme.
     func resolvedNSAppearance() -> NSAppearance? {
         switch self {
@@ -35,6 +38,7 @@ enum AppearanceMode: String, CaseIterable, Identifiable {
             nil
         }
     }
+    #endif
 
     /// `nil` lets SwiftUI follow the window / system appearance.
     func preferredColorScheme(system: ColorScheme) -> ColorScheme? {
@@ -46,8 +50,7 @@ enum AppearanceMode: String, CaseIterable, Identifiable {
     }
 
     static func systemColorScheme() -> ColorScheme {
-        let match = NSApp.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua])
-        return match == .darkAqua ? .dark : .light
+        PlatformColor.systemColorScheme()
     }
 
     static let systemThemeDidChangeNotification = Notification.Name(

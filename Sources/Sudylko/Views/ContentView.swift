@@ -1,8 +1,13 @@
-import AppKit
 import SwiftUI
+#if os(macOS)
+import AppKit
+#endif
 
 struct ContentView: View {
     @EnvironmentObject private var appCommands: AppCommandState
+#if os(iOS)
+    @Environment(\.scenePhase) private var scenePhase
+#endif
     @EnvironmentObject private var appAccent: AppAccentModel
     @AppStorage("appearanceMode") private var appearanceRaw = AppearanceMode.system.rawValue
     @AppStorage("digitFontStyle") private var fontStyleRaw = DigitFontStyle.rounded.rawValue
@@ -100,7 +105,9 @@ struct ContentView: View {
             detailColumn
         }
         .navigationSplitViewStyle(.balanced)
+        #if os(macOS)
         .frame(minWidth: 780, minHeight: 640)
+        #endif
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .hiddenWindowToolbar()
         .appBackground()
@@ -109,12 +116,25 @@ struct ContentView: View {
         .environment(\.isAppActive, isAppActive)
         .environment(\.isWindowFullscreen, isWindowFullscreen)
         .preferredColorScheme(appearanceMode.preferredColorScheme(system: systemColorScheme))
+        #if os(macOS)
         .background(WindowConfigurator(
             appearanceMode: appearanceMode,
             isAppActive: $isAppActive,
             isWindowMiniaturized: $isWindowMiniaturized,
             isWindowFullscreen: $isWindowFullscreen
         ))
+        #endif
+        #if os(iOS)
+        .onChange(of: scenePhase) { _, phase in
+            let active = phase == .active
+            if isAppActive != active {
+                isAppActive = active
+            }
+            if phase == .active {
+                handleSystemThemeDidChange()
+            }
+        }
+        #endif
         .onChange(of: appearanceRaw) { _, _ in refreshAppearanceFromSettings() }
         .onChange(of: isAppActive) { _, active in handleAppActiveChange(active) }
         .onChange(of: showSettings) { _, _ in updateAutoPauseForInterrupts() }
@@ -127,6 +147,9 @@ struct ContentView: View {
             if inGame {
                 homeProgressInspectorPresented = false
                 homeInspectorSection = nil
+                #if os(iOS)
+                columnVisibility = .detailOnly
+                #endif
             }
         }
         .onChange(of: puzzleTimer.isPaused) { _, _ in
@@ -379,17 +402,17 @@ struct ContentView: View {
             inspectorPresented: $homeProgressInspectorPresented,
             inspectorSection: $homeInspectorSection
         )
-        .inspector(isPresented: $homeProgressInspectorPresented) {
-            HomeProgressPaneView(section: homeInspectorSection)
-                .inspectorColumnWidth(min: 260, ideal: 300, max: 400)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 12)
-        }
+        .modifier(HomeProgressPresentationModifier(
+            isPresented: $homeProgressInspectorPresented,
+            section: homeInspectorSection
+        ))
         .navigationTitle("")
         .hiddenWindowToolbar()
+        #if os(macOS)
         .background {
             EscapeKeyboardHost(onEscape: dismissSettingsIfNeeded)
         }
+        #endif
     }
 
     private func toggleSidebar() {
@@ -600,8 +623,12 @@ struct ContentView: View {
         appAccent.refresh()
         refreshSaveSlots()
         restoreLastSessionIfNeeded()
+        #if os(macOS)
         applyWindowAppearance()
         isAppActive = NSApp.isActive
+        #else
+        isAppActive = scenePhase == .active
+        #endif
         updateDockIcon()
     }
 
@@ -706,10 +733,12 @@ struct ContentView: View {
     }
 
     private func applyWindowAppearance() {
+        #if os(macOS)
         let appearance = appearanceMode.resolvedNSAppearance() ?? NSApp.effectiveAppearance
         for window in NSApplication.shared.windows {
             window.appearance = appearance
         }
+        #endif
     }
 
     private func updateDockIcon() {

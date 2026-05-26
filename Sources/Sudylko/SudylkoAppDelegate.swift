@@ -1,3 +1,4 @@
+#if os(macOS)
 import AppKit
 
 final class SudylkoAppDelegate: NSObject, NSApplicationDelegate {
@@ -29,3 +30,4 @@ final class SudylkoAppDelegate: NSObject, NSApplicationDelegate {
         true
     }
 }
+#endif

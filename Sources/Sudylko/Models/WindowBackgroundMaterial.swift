@@ -1,6 +1,9 @@
+import SwiftUI
+#if canImport(AppKit)
 import AppKit
+#endif
 
-/// Window backdrop materials for `VisualEffectBackground` (`.behindWindow`).
+/// Window backdrop materials for glass panels.
 /// `displayOrder` runs solid (0%) → translucent glass (100%).
 enum WindowBackgroundMaterial: String, Identifiable {
     case solid
@@ -18,7 +21,7 @@ enum WindowBackgroundMaterial: String, Identifiable {
 
     static var `default`: Self { .translucent }
 
-    /// Fixed window transparency while fullscreen (slider preference still applies when not fullscreen).
+    /// Fixed window transparency while fullscreen on macOS (slider still applies when not fullscreen).
     static let fullscreenTransparencyPercent = 20
 
     var transparencyPercent: Int {
@@ -39,9 +42,27 @@ enum WindowBackgroundMaterial: String, Identifiable {
     }
 
     func effective(whenFullscreen isFullscreen: Bool) -> Self {
-        isFullscreen ? Self.fullscreenOverride : self
+        #if os(macOS)
+        return isFullscreen ? Self.fullscreenOverride : self
+        #else
+        _ = isFullscreen
+        return self
+        #endif
     }
 
+    /// SwiftUI material for glass on iOS and fallback surfaces.
+    var swiftUIMaterial: Material {
+        switch self {
+        case .solid: .regularMaterial
+        case .soft: .thinMaterial
+        case .standard: .regularMaterial
+        case .translucent: .ultraThinMaterial
+        case .light: .thinMaterial
+        case .hud: .thickMaterial
+        }
+    }
+
+    #if os(macOS)
     var nsMaterial: NSVisualEffectView.Material {
         switch self {
         case .solid: .windowBackground
@@ -52,5 +73,5 @@ enum WindowBackgroundMaterial: String, Identifiable {
         case .hud: .hudWindow
         }
     }
-
+    #endif
 }

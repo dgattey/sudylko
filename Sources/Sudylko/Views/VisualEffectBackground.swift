@@ -1,8 +1,11 @@
-import AppKit
 import SwiftUI
+#if canImport(AppKit)
+import AppKit
+#endif
 
 private let glassMaterialTintOpacity: CGFloat = 0.16
 
+#if os(macOS)
 struct VisualEffectBackground: NSViewRepresentable {
     var material: NSVisualEffectView.Material
     var blendingMode: NSVisualEffectView.BlendingMode
@@ -27,6 +30,7 @@ struct VisualEffectBackground: NSViewRepresentable {
         view.appearance = NSAppearance(named: colorScheme == .dark ? .darkAqua : .aqua)
     }
 }
+#endif
 
 extension View {
     @ViewBuilder
@@ -36,11 +40,17 @@ extension View {
         material: WindowBackgroundMaterial
     ) -> some View {
         ZStack {
+            #if os(macOS)
             VisualEffectBackground(
                 material: material.nsMaterial,
                 blendingMode: .behindWindow,
                 colorScheme: colorScheme
             )
+            #else
+            Rectangle()
+                .fill(.clear)
+                .background(material.swiftUIMaterial)
+            #endif
             AppTheme.sidebarTint(accent: accent, colorScheme: colorScheme)
                 .opacity(glassMaterialTintOpacity)
         }

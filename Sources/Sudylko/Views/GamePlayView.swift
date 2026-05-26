@@ -152,6 +152,7 @@ struct GamePlayView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
             .padding(padding)
         }
+        #if os(macOS)
         .background {
             BoardKeyboardHost(
                 game: game,
@@ -171,5 +172,6 @@ struct GamePlayView: View {
             )
             .frame(width: 0, height: 0)
         }
+        #endif
     }
 }
