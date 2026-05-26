@@ -7,12 +7,17 @@ struct PlayerStatsView: View {
     @Environment(\.appAccent) private var accent
     @Environment(\.colorScheme) private var colorScheme
     @AppStorage("windowBackgroundMaterial") private var materialRaw = WindowBackgroundMaterial.default.rawValue
+    @Environment(\.isWindowFullscreen) private var isWindowFullscreen
 
     private static let panelCornerRadius: CGFloat = 14
+    private static let panelContentPadding: CGFloat = 14
     private static let chartHeight: CGFloat = 132
+    /// Trailing gutter inside the plot so bar percent labels are not clipped at 100%.
+    private static let winRateLabelTrailingPadding: CGFloat = 34
 
     private var windowMaterial: WindowBackgroundMaterial {
-        WindowBackgroundMaterial(rawValue: materialRaw) ?? .default
+        let stored = WindowBackgroundMaterial(rawValue: materialRaw) ?? .default
+        return stored.effective(whenFullscreen: isWindowFullscreen)
     }
 
     var body: some View {
@@ -38,7 +43,7 @@ struct PlayerStatsView: View {
                 }
             }
         }
-        .frame(maxWidth: 420)
+        .frame(maxWidth: .infinity)
         .onAppear { stats = PlayerStatsStore.load() }
         .onReceive(NotificationCenter.default.publisher(for: .achievementsDidChange)) { _ in
             stats = PlayerStatsStore.load()
@@ -209,19 +214,19 @@ struct PlayerStatsView: View {
 
             Chart(winRateBarPoints) { point in
                 BarMark(
-                    x: .value("Rate", point.percent),
+                    x: .value("Rate", min(100, point.percent)),
                     y: .value("Difficulty", point.difficulty)
                 )
                 .foregroundStyle(difficultyColor(for: point.difficulty))
                 .cornerRadius(4)
-                .annotation(position: .trailing, alignment: .leading) {
-                    Text("\(Int(point.percent.rounded()))%")
-                        .font(.caption2.weight(.medium).monospacedDigit())
-                        .foregroundStyle(.secondary)
-                        .padding(.leading, 4)
+                .annotation(position: .trailing, alignment: .leading, spacing: 4) {
+                    winRateBarPercentLabel(for: point.percent)
                 }
             }
             .chartXScale(domain: 0 ... 100)
+            .chartPlotStyle { plot in
+                plot.padding(.trailing, Self.winRateLabelTrailingPadding)
+            }
             .chartXAxis {
                 AxisMarks(values: [0, 25, 50, 75, 100]) { value in
                     AxisGridLine()
@@ -240,9 +245,11 @@ struct PlayerStatsView: View {
                 }
             }
             .frame(height: Self.chartHeight)
+            .padding(.trailing, 4)
+            .clipped()
             .accessibilityLabel(winRateChartAccessibilityLabel)
         }
-        .padding(14)
+        .padding(Self.panelContentPadding)
         .statsGlassPanel(
             accent: accent,
             colorScheme: colorScheme,
@@ -328,12 +335,12 @@ struct PlayerStatsView: View {
         GameDifficulty.allCases.flatMap { difficulty in
             let bucket = stats[difficulty]
             guard bucket.started > 0 else { return [OutcomeBarPoint]() }
-            let inProgress = max(0, bucket.started - bucket.won - bucket.lost)
+            let inProgress = max(0, bucket.started - bucket.displayWon - bucket.lost)
             return [
                 OutcomeBarPoint(
                     difficulty: difficulty.displayName,
                     kind: .won,
-                    count: bucket.won,
+                    count: bucket.displayWon,
                     sortOrder: difficulty.chartSortOrder
                 ),
                 OutcomeBarPoint(
@@ -357,10 +364,9 @@ struct PlayerStatsView: View {
         GameDifficulty.allCases.compactMap { difficulty in
             let bucket = stats[difficulty]
             guard bucket.started > 0 else { return nil }
-            let pct = Double(bucket.won) / Double(bucket.started) * 100
             return WinRateBarPoint(
                 difficulty: difficulty.displayName,
-                percent: pct,
+                percent: min(100, bucket.winRatePercent),
                 sortOrder: difficulty.chartSortOrder
             )
         }
@@ -380,8 +386,8 @@ struct PlayerStatsView: View {
         let parts = GameDifficulty.allCases.map { d -> String in
             let b = stats[d]
             guard b.started > 0 else { return "" }
-            let pending = max(0, b.started - b.won - b.lost)
-            return "\(d.displayName): \(b.won) won, \(b.lost) lost, \(pending) in progress"
+            let pending = max(0, b.started - b.displayWon - b.lost)
+            return "\(d.displayName): \(b.displayWon) won, \(b.lost) lost, \(pending) in progress"
         }.filter { !$0.isEmpty }
         return "Games by outcome. " + parts.joined(separator: ". ")
     }
@@ -390,7 +396,7 @@ struct PlayerStatsView: View {
         let parts = GameDifficulty.allCases.compactMap { d -> String? in
             let b = stats[d]
             guard b.started > 0 else { return nil }
-            return "\(d.displayName) \(formatPercent(won: b.won, of: b.started))"
+            return "\(d.displayName) \(formatPercent(won: b.displayWon, of: b.started))"
         }
         return "Win rate by difficulty. " + parts.joined(separator: ". ")
     }
@@ -407,9 +413,17 @@ struct PlayerStatsView: View {
         return PuzzleTimer.format(seconds)
     }
 
+    private func winRateBarPercentLabel(for percent: Double) -> some View {
+        Text("\(Int(min(100, percent).rounded()))%")
+            .font(.caption2.weight(.medium).monospacedDigit())
+            .foregroundStyle(.secondary)
+            .fixedSize()
+    }
+
     private func formatPercent(won: Int, of total: Int) -> String {
         guard total > 0 else { return "—" }
-        let pct = Int((Double(won) / Double(total) * 100).rounded())
+        let cappedWon = min(won, total)
+        let pct = min(100, Int((Double(cappedWon) / Double(total) * 100).rounded()))
         return "\(pct)%"
     }
 }
@@ -532,12 +546,12 @@ private struct DifficultyStatsCard: View {
     }
 
     private var winRateText: String {
-        let pct = Int((Double(bucket.won) / Double(bucket.started) * 100).rounded())
+        let pct = Int(bucket.winRatePercent.rounded())
         return "\(pct)% won"
     }
 
     private var winProgressBar: some View {
-        let fraction = bucket.started > 0 ? Double(bucket.won) / Double(bucket.started) : 0
+        let fraction = min(1, bucket.winRatePercent / 100)
         return GeometryReader { geo in
             ZStack(alignment: .leading) {
                 Capsule()
@@ -561,7 +575,7 @@ private struct DifficultyStatsCard: View {
             spacing: 8
         ) {
             DetailChip(label: "Started", value: "\(bucket.started)")
-            DetailChip(label: "Won", value: "\(bucket.won)")
+            DetailChip(label: "Won", value: "\(bucket.displayWon)")
             if bucket.lost > 0 {
                 DetailChip(label: "Lost", value: "\(bucket.lost)")
             }
@@ -583,7 +597,7 @@ private struct DifficultyStatsCard: View {
     private var difficultyAccessibilityLabel: String {
         """
         \(difficulty.displayName). \(winRateText). \
-        \(bucket.started) started, \(bucket.won) won, \(bucket.lost) lost. \
+        \(bucket.started) started, \(bucket.displayWon) won, \(bucket.lost) lost. \
         Best time \(formatOptionalDuration(bucket.bestWinSeconds)).
         """
     }
@@ -631,6 +645,7 @@ private extension View {
             material: material,
             cornerRadius: cornerRadius
         )
+        .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                 .strokeBorder(Color.primary.opacity(colorScheme == .dark ? 0.08 : 0.06), lineWidth: 1)

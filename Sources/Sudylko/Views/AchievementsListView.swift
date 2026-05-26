@@ -36,7 +36,7 @@ struct AchievementsListView: View {
             .padding(.vertical, 4)
             .background(.quaternary.opacity(colorScheme == .dark ? 0.35 : 0.5), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
         }
-        .frame(maxWidth: 420)
+        .frame(maxWidth: .infinity)
         .onAppear {
             unlockedIDs = AchievementStore.unlockedIDs()
         }
