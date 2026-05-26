@@ -164,8 +164,9 @@ final class GameViewModel: ObservableObject {
     }
 
     func highlightDigit(_ digit: Int) {
-        highlightedDigit = digit
         guard acceptsInput else { return }
+        guard isPencilMode || !isGuessDigitExhausted(digit) else { return }
+        highlightedDigit = digit
         guard let selected, !givens.contains(selected) else { return }
         if isPencilMode {
             guard values[selected.row][selected.col] == nil else { return }
@@ -192,6 +193,7 @@ final class GameViewModel: ObservableObject {
         guard acceptsInput else { return }
         guard !givens.contains(index) else { return }
         guard (1...9).contains(digit) else { return }
+        guard !isGuessDigitExhausted(digit) else { return }
         guard values[index.row][index.col] != digit else { return }
         recordUndo(at: index)
         values[index.row][index.col] = digit
@@ -252,7 +254,7 @@ final class GameViewModel: ObservableObject {
         guard key.count == 1, let digit = Int(key), (1...9).contains(digit) else { return }
         if isPencilMode {
             toggleNote(digit, at: selected)
-        } else {
+        } else if !isGuessDigitExhausted(digit) {
             setValue(digit, at: selected)
         }
         noteSave()
@@ -260,6 +262,19 @@ final class GameViewModel: ObservableObject {
 
     func isGiven(_ index: CellIndex) -> Bool {
         givens.contains(index)
+    }
+
+    /// True when every cell that should contain `digit` in the solution already shows that digit (guesser pad).
+    func isGuessDigitExhausted(_ digit: Int) -> Bool {
+        guard (1...9).contains(digit) else { return true }
+        for r in 0..<9 {
+            for c in 0..<9 where solution[r][c] == digit {
+                if values[r][c] != digit {
+                    return false
+                }
+            }
+        }
+        return true
     }
 
     var hasPlayerEntries: Bool {

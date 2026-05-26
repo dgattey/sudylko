@@ -128,6 +128,7 @@ struct NumberPadView: View {
     private func digitButton(_ digit: Int) -> some View {
         let highlighted = game.highlightedDigit == digit
         let inNoteMode = game.isPencilMode
+        let exhausted = !inNoteMode && game.isGuessDigitExhausted(digit)
         return Button {
             onInteraction?()
             game.highlightDigit(digit)
@@ -149,6 +150,8 @@ struct NumberPadView: View {
         .buttonStyle(.bordered)
         .tint(highlighted ? accent.interactiveForeground(for: colorScheme) : nil)
         .padKeyBorder(highlighted: highlighted, accent: accent, colorScheme: colorScheme)
+        .disabled(exhausted)
+        .opacity(exhausted ? 0.42 : 1)
         .sudylkoFocusSuppressed()
     }
 
