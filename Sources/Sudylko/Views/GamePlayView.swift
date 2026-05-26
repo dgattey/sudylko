@@ -4,24 +4,25 @@ struct GamePlayView: View {
     @ObservedObject var game: GameViewModel
     @ObservedObject var timer: PuzzleTimer
     var onRestart: () -> Void
-    var onDelete: () -> Void
+    var onArchive: () -> Void
     var onGoHome: () -> Void
 
     @Binding var showSettings: Bool
-    @Binding var showDeleteConfirmation: Bool
+    @Binding var showArchiveConfirmation: Bool
     @Binding var showRestartConfirmation: Bool
 
     @AppStorage("revealMistakesImmediately") private var revealMistakesImmediately = false
+    @AppStorage("impossibleMode") private var impossibleMode = false
     @Environment(\.appAccent) private var accent
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.isAppActive) private var isAppActive
 
     private var isPlayable: Bool {
-        isAppActive && !timer.isPaused && !game.isComplete
+        isAppActive && !timer.isPaused && !game.isPuzzleEnded
     }
 
     private var showPauseOverlay: Bool {
-        isAppActive && timer.isPaused && timer.isRunning && !game.isComplete
+        isAppActive && timer.isPaused && timer.isRunning && !game.isPuzzleEnded
     }
 
     private func resumeFromOverlay() {
@@ -34,18 +35,18 @@ struct GamePlayView: View {
         puzzleArea
             .onAppear { syncInputEnabled() }
         .onChange(of: timer.isPaused) { _, _ in syncInputEnabled() }
-        .onChange(of: game.isComplete) { _, _ in syncInputEnabled() }
+        .onChange(of: game.isPuzzleEnded) { _, _ in syncInputEnabled() }
         .onChange(of: isAppActive) { _, _ in syncInputEnabled() }
         .navigationTitle(game.puzzleSeed.windowTitle)
         .confirmationDialog(
-            "Delete Game \(game.puzzleSeed.gameNumberLabel)?",
-            isPresented: $showDeleteConfirmation,
+            "Archive Game \(game.puzzleSeed.gameNumberLabel)?",
+            isPresented: $showArchiveConfirmation,
             titleVisibility: .visible
         ) {
-            Button("Delete", role: .destructive, action: onDelete)
+            Button("Archive", role: .destructive, action: onArchive)
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("This saved game will be permanently removed.")
+            Text("This game moves to Archived games. You can open it from there later.")
         }
         .confirmationDialog(
             "Restart this puzzle?",
@@ -58,16 +59,20 @@ struct GamePlayView: View {
             Text("Your progress on this puzzle will be lost.")
         }
         .onAppear {
-            applyRevealMistakesSetting()
+            applyGameplaySettings()
         }
         .onChange(of: revealMistakesImmediately) { _, _ in
-            applyRevealMistakesSetting()
+            applyGameplaySettings()
+        }
+        .onChange(of: impossibleMode) { _, _ in
+            applyGameplaySettings()
         }
         .hiddenWindowToolbar()
     }
 
-    private func applyRevealMistakesSetting() {
+    private func applyGameplaySettings() {
         game.revealMistakesImmediately = revealMistakesImmediately
+        game.impossibleMode = impossibleMode
         game.refreshMistakes()
     }
 
@@ -151,7 +156,7 @@ struct GamePlayView: View {
             BoardKeyboardHost(
                 game: game,
                 onTogglePause: {
-                    guard timer.isRunning, !game.isComplete else { return }
+                    guard timer.isRunning, !game.isPuzzleEnded else { return }
                     timer.togglePause()
                     syncInputEnabled()
                 },

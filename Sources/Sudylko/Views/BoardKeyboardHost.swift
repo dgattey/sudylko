@@ -118,7 +118,7 @@ struct BoardKeyboardHost: NSViewRepresentable {
                 return HelpMenuShortcutController.shared.performShortcut(from: self)
             }
 
-            guard game.isInputEnabled, !game.isComplete else { return false }
+            guard game.isInputEnabled, !game.isPuzzleEnded else { return false }
 
             if let digit = Self.digit(from: event) {
                 guard let selected = game.selected else { return true }

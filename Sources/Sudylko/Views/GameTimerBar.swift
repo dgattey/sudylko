@@ -2,11 +2,13 @@ import SwiftUI
 
 struct GameTimerBar: View {
     @ObservedObject var timer: PuzzleTimer
-    let isPuzzleComplete: Bool
+    let isPuzzleEnded: Bool
+    let endedLabel: String?
+    let endedLabelColor: Color
 
     var body: some View {
         Group {
-            if isPuzzleComplete {
+            if isPuzzleEnded {
                 timerContent
             } else {
                 Button {
@@ -38,10 +40,10 @@ struct GameTimerBar: View {
                 .foregroundStyle(.primary)
                 .frame(minWidth: 68, alignment: .leading)
 
-            if isPuzzleComplete {
-                Text("Done")
+            if isPuzzleEnded, let endedLabel {
+                Text(endedLabel)
                     .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(.green)
+                    .foregroundStyle(endedLabelColor)
             } else {
                 Label(
                     timer.isPaused ? "Resume" : "Pause",
