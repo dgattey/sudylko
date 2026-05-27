@@ -25,7 +25,7 @@ final class AppAccentModel: ObservableObject {
     init() {
         applyResolvedState(force: true)
         // Filter to UserDefaults.standard so writes to the dock-plugin suite from
-        // `synchronizeForDockPlugin` don't bounce back into this observer and recurse.
+        // `synchronizeIfNeeded` don't bounce back into this observer and recurse.
         defaultsObserver = NotificationCenter.default.addObserver(
             forName: UserDefaults.didChangeNotification,
             object: UserDefaults.standard,
@@ -47,10 +47,11 @@ final class AppAccentModel: ObservableObject {
         applyResolvedState(force: false)
     }
 
-    /// `UserDefaults.didChangeNotification` fires on any standard-defaults write, including the
-    /// app's many `@AppStorage` keys. Only do the SwiftUI invalidation + cross-process mirror
-    /// flush when accent/appearance actually changed; otherwise this runs on every tap and
-    /// hammers `dockPluginDefaults.synchronize()` from the main thread.
+    /// Two early-outs, one per concern. The suite mirror runs on every refresh because
+    /// `synchronizeIfNeeded` is cheap when standard and suite agree (two in-memory reads per
+    /// mirrored key, no disk I/O) and the quit-state plug-in depends on it being current.
+    /// The SwiftUI invalidation early-out is separate: skip the `@Published` cascade and the
+    /// icon cache invalidation when accent, appearance, and resolved scheme are unchanged.
     private func applyResolvedState(force: Bool) {
         let accentRaw = UserDefaults.standard.string(forKey: Keys.accent)
             ?? AppAccentColor.blue.rawValue
@@ -60,6 +61,8 @@ final class AppAccentModel: ObservableObject {
         let resolvedAccent = AppAccentColor(rawValue: accentRaw) ?? .blue
         let resolvedAppearance = AppearanceMode(rawValue: appearanceRaw) ?? .system
         let scheme = resolvedAppearance.resolvedColorScheme(system: systemColorScheme)
+
+        SudylkoPreferenceAccess.synchronizeIfNeeded()
 
         if !force,
            resolvedAccent == accent,
@@ -73,7 +76,6 @@ final class AppAccentModel: ObservableObject {
         resolvedColorScheme = scheme
         interactiveTint = resolvedAccent.interactiveForeground(for: scheme)
         prominentTint = resolvedAccent.displayColor(for: scheme)
-        SudylkoPreferenceAccess.synchronizeForDockPlugin()
         #if os(macOS)
         DockIconRenderer.invalidateCache()
         #endif

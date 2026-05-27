@@ -32,20 +32,42 @@ public enum SudylkoPreferenceAccess {
         #endif
     }
 
-    /// Host side: copy the current values of the mirrored keys from the host app's standard
-    /// defaults into the mirror suite and flush to disk. Must only be called from the host
-    /// process; from inside the Dock process `UserDefaults.standard` is Dock's own preferences
-    /// and the loop would clobber the mirror with `nil` for every key.
-    public static func synchronizeForDockPlugin() {
+    /// Host side: mirror the keys we care about into the suite when (and only when) the suite
+    /// disagrees with `UserDefaults.standard`. Safe to call on every refresh tick because the
+    /// check is two in-memory reads per key and skips disk I/O when nothing moved. Must only
+    /// be called from the host process; from inside the Dock process `UserDefaults.standard`
+    /// is Dock's own preferences and the loop would clobber the mirror with `nil` for every
+    /// key.
+    @discardableResult
+    public static func synchronizeIfNeeded() -> Bool {
         #if os(macOS)
         let standard = UserDefaults.standard
+        var didWrite = false
         for key in mirroredKeys {
-            if let value = standard.string(forKey: key) {
-                dockPluginDefaults.set(value, forKey: key)
+            let standardValue = standard.string(forKey: key)
+            let suiteValue = dockPluginDefaults.string(forKey: key)
+            guard standardValue != suiteValue else { continue }
+            if let standardValue {
+                dockPluginDefaults.set(standardValue, forKey: key)
             } else {
                 dockPluginDefaults.removeObject(forKey: key)
             }
+            didWrite = true
         }
+        if didWrite {
+            dockPluginDefaults.synchronize()
+        }
+        return didWrite
+        #else
+        return false
+        #endif
+    }
+
+    /// Force a flush regardless of the diff. Used at `applicationWillTerminate` so any pending
+    /// in-memory writes hit disk before the process exits and the plug-in fires.
+    public static func flushForTerminate() {
+        #if os(macOS)
+        _ = synchronizeIfNeeded()
         dockPluginDefaults.synchronize()
         #endif
     }

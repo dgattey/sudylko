@@ -55,7 +55,7 @@ final class SudylkoAppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
-        SudylkoPreferenceAccess.synchronizeForDockPlugin()
+        SudylkoPreferenceAccess.flushForTerminate()
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
