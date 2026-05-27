@@ -29,7 +29,7 @@ struct ContentView: View {
     @State private var showGameArchiveConfirmation = false
     @State private var showGameRestartConfirmation = false
     #if os(iOS)
-    @State private var columnVisibility: NavigationSplitViewVisibility = .detailOnly
+    @State private var showSavesSheet = false
     #else
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
     #endif
@@ -86,8 +86,24 @@ struct ContentView: View {
     }
 
     private var keyboardShortcutsSheet: some View {
+        #if os(iOS)
+        NavigationStack {
+            KeyboardShortcutsView()
+                .navigationTitle("Keyboard shortcuts")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Close") {
+                            showKeyboardShortcuts = false
+                        }
+                    }
+                }
+        }
+        .environment(\.colorScheme, resolvedColorScheme)
+        #else
         KeyboardShortcutsView()
             .environment(\.colorScheme, resolvedColorScheme)
+        #endif
     }
 
     /// Wraps all window UI including sheets so accent `tint` is not scoped only to `rootSplitView`.
@@ -96,11 +112,159 @@ struct ContentView: View {
     }
 
     private var appChromeWithSheets: some View {
-        rootSplitView
+        rootChrome { platformRootCore }
             .overlay { gameOverlays }
             .animation(.spring(response: 0.45, dampingFraction: 0.82), value: game?.isPuzzleEnded == true)
             .sheet(isPresented: $showSeedSheet) { seedSheet }
             .sheet(isPresented: $showKeyboardShortcuts) { keyboardShortcutsSheet }
+            #if os(iOS)
+            .sheet(isPresented: $showSavesSheet) { savesSheet }
+            #endif
+    }
+
+    @ViewBuilder
+    private var platformRootCore: some View {
+        #if os(iOS)
+        NavigationStack {
+            detailColumn
+        }
+        #else
+        NavigationSplitView(columnVisibility: $columnVisibility) {
+            sidebar
+                .navigationSplitViewColumnWidth(SidebarMetrics.width)
+        } detail: {
+            detailColumn
+        }
+        .navigationSplitViewStyle(.balanced)
+        #endif
+    }
+
+    #if os(iOS)
+    private var savesSheet: some View {
+        NavigationStack {
+            sidebar
+                .navigationTitle("Saves")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Done") {
+                            showSavesSheet = false
+                        }
+                    }
+                }
+        }
+    }
+    #endif
+
+    @ViewBuilder
+    private func rootChrome<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        content()
+        #if os(macOS)
+            .frame(
+                minWidth: macWindowMinimumSize.width,
+                minHeight: macWindowMinimumSize.height
+            )
+        #endif
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .hiddenWindowToolbar()
+            .appBackground()
+            .environment(\.colorScheme, resolvedColorScheme)
+            .environment(\.digitFontStyle, digitFont)
+            .environment(\.isAppActive, isAppActive)
+            .environment(\.isWindowFullscreen, isWindowFullscreen)
+            .preferredColorScheme(appearanceMode.preferredColorScheme(system: systemColorScheme))
+        #if os(macOS)
+            .background(WindowConfigurator(
+                appearanceMode: appearanceMode,
+                minimumWindowSize: macWindowMinimumSize,
+                isAppActive: $isAppActive,
+                isWindowMiniaturized: $isWindowMiniaturized,
+                isWindowFullscreen: $isWindowFullscreen
+            ))
+        #endif
+        #if os(iOS)
+            .onChange(of: scenePhase) { _, phase in
+                let active = phase == .active
+                if isAppActive != active {
+                    isAppActive = active
+                }
+                if phase == .active {
+                    handleSystemThemeDidChange()
+                }
+            }
+        #endif
+            .onChange(of: appearanceRaw) { _, _ in refreshAppearanceFromSettings() }
+            .onChange(of: isAppActive) { _, active in handleAppActiveChange(active) }
+            .onChange(of: showSettings) { _, _ in updateAutoPauseForInterrupts() }
+            .onChange(of: isWindowMiniaturized) { _, _ in updateAutoPauseForInterrupts() }
+            .onChange(of: activeSaveID) { oldID, newID in
+                handleActiveSaveIDChange(from: oldID, to: newID)
+                updateDockIcon()
+            }
+            .onChange(of: isInGame) { _, inGame in
+                if inGame {
+                    homeProgressInspectorPresented = false
+                    homeInspectorSection = nil
+                    #if os(iOS)
+                    showSavesSheet = false
+                    #endif
+                }
+            }
+            .onChange(of: puzzleTimer.isPaused) { _, _ in
+                persistCurrentGame()
+                updateDockIcon()
+            }
+            .onChange(of: puzzleTimer.formattedElapsed) { _, _ in
+                if activeSaveID != nil { updateDockIcon() }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .sudylkoSystemThemeDidChange)) { _ in
+                handleSystemThemeDidChange()
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .openSettings)) { _ in
+                toggleSettings()
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .toggleSidebar)) { _ in
+                toggleSidebar()
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .showKeyboardShortcuts)) { _ in
+                showKeyboardShortcuts = true
+            }
+        #if DEBUG
+            .onReceive(NotificationCenter.default.publisher(for: .debugAchievementUnlocked)) { notification in
+                guard let id = notification.object as? AchievementID else { return }
+                enqueueCelebrations([id])
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .debugTriggerPulse)) { notification in
+                guard let kind = notification.object as? DebugPulseKind else { return }
+                switch kind {
+                case .puzzleComplete:
+                    game?.debugTriggerPuzzleCompletePulse()
+                case .finishedRow:
+                    game?.debugTriggerFinishedRowPulse()
+                case .finishedColumn:
+                    game?.debugTriggerFinishedColumnPulse()
+                case .finishedBox:
+                    game?.debugTriggerFinishedBoxPulse()
+                }
+            }
+        #endif
+            .onReceive(NotificationCenter.default.publisher(for: .savesDidChange), perform: handleSavesDidChange)
+            .onReceive(NotificationCenter.default.publisher(for: .undo)) { _ in
+                game?.undo()
+                appCommands.sync(with: game)
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .redo)) { _ in
+                game?.redo()
+                appCommands.sync(with: game)
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .deleteCell)) { _ in
+                game?.keyboardClearSelected()
+                appCommands.sync(with: game)
+            }
+            .onChange(of: game?.canUndo) { _, _ in appCommands.sync(with: game) }
+            .onChange(of: game?.canRedo) { _, _ in appCommands.sync(with: game) }
+            .onChange(of: game?.canDelete) { _, _ in appCommands.sync(with: game) }
+            .onChange(of: game?.saveRevision) { _, _ in appCommands.sync(with: game) }
     }
 
     private var appChromeWithLifecycle: some View {
@@ -131,128 +295,6 @@ struct ContentView: View {
             .onChange(of: impossibleMode) { _, _ in
                 applyGameplaySettingsToActiveGame()
             }
-    }
-
-    private var rootSplitView: some View {
-        NavigationSplitView(columnVisibility: $columnVisibility) {
-            sidebar
-                #if os(macOS)
-                .navigationSplitViewColumnWidth(SidebarMetrics.width)
-                #endif
-        } detail: {
-            detailColumn
-        }
-        #if os(macOS)
-        .navigationSplitViewStyle(.balanced)
-        #else
-        .navigationSplitViewStyle(.automatic)
-        #endif
-        #if os(macOS)
-        .frame(
-            minWidth: macWindowMinimumSize.width,
-            minHeight: macWindowMinimumSize.height
-        )
-        #endif
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .hiddenWindowToolbar()
-        .appBackground()
-        .environment(\.colorScheme, resolvedColorScheme)
-        .environment(\.digitFontStyle, digitFont)
-        .environment(\.isAppActive, isAppActive)
-        .environment(\.isWindowFullscreen, isWindowFullscreen)
-        .preferredColorScheme(appearanceMode.preferredColorScheme(system: systemColorScheme))
-        #if os(macOS)
-        .background(WindowConfigurator(
-            appearanceMode: appearanceMode,
-            minimumWindowSize: macWindowMinimumSize,
-            isAppActive: $isAppActive,
-            isWindowMiniaturized: $isWindowMiniaturized,
-            isWindowFullscreen: $isWindowFullscreen
-        ))
-        #endif
-        #if os(iOS)
-        .onChange(of: scenePhase) { _, phase in
-            let active = phase == .active
-            if isAppActive != active {
-                isAppActive = active
-            }
-            if phase == .active {
-                handleSystemThemeDidChange()
-            }
-        }
-        #endif
-        .onChange(of: appearanceRaw) { _, _ in refreshAppearanceFromSettings() }
-        .onChange(of: isAppActive) { _, active in handleAppActiveChange(active) }
-        .onChange(of: showSettings) { _, _ in updateAutoPauseForInterrupts() }
-        .onChange(of: isWindowMiniaturized) { _, _ in updateAutoPauseForInterrupts() }
-        .onChange(of: activeSaveID) { oldID, newID in
-            handleActiveSaveIDChange(from: oldID, to: newID)
-            updateDockIcon()
-        }
-        .onChange(of: isInGame) { _, inGame in
-            if inGame {
-                homeProgressInspectorPresented = false
-                homeInspectorSection = nil
-                #if os(iOS)
-                columnVisibility = .detailOnly
-                #endif
-            }
-        }
-        .onChange(of: puzzleTimer.isPaused) { _, _ in
-            persistCurrentGame()
-            updateDockIcon()
-        }
-        .onChange(of: puzzleTimer.formattedElapsed) { _, _ in
-            if activeSaveID != nil { updateDockIcon() }
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .sudylkoSystemThemeDidChange)) { _ in
-            handleSystemThemeDidChange()
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .openSettings)) { _ in
-            toggleSettings()
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .toggleSidebar)) { _ in
-            toggleSidebar()
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .showKeyboardShortcuts)) { _ in
-            showKeyboardShortcuts = true
-        }
-        #if DEBUG
-        .onReceive(NotificationCenter.default.publisher(for: .debugAchievementUnlocked)) { notification in
-            guard let id = notification.object as? AchievementID else { return }
-            enqueueCelebrations([id])
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .debugTriggerPulse)) { notification in
-            guard let kind = notification.object as? DebugPulseKind else { return }
-            switch kind {
-            case .puzzleComplete:
-                game?.debugTriggerPuzzleCompletePulse()
-            case .finishedRow:
-                game?.debugTriggerFinishedRowPulse()
-            case .finishedColumn:
-                game?.debugTriggerFinishedColumnPulse()
-            case .finishedBox:
-                game?.debugTriggerFinishedBoxPulse()
-            }
-        }
-        #endif
-        .onReceive(NotificationCenter.default.publisher(for: .savesDidChange), perform: handleSavesDidChange)
-        .onReceive(NotificationCenter.default.publisher(for: .undo)) { _ in
-            game?.undo()
-            appCommands.sync(with: game)
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .redo)) { _ in
-            game?.redo()
-            appCommands.sync(with: game)
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .deleteCell)) { _ in
-            game?.keyboardClearSelected()
-            appCommands.sync(with: game)
-        }
-        .onChange(of: game?.canUndo) { _, _ in appCommands.sync(with: game) }
-        .onChange(of: game?.canRedo) { _, _ in appCommands.sync(with: game) }
-        .onChange(of: game?.canDelete) { _, _ in appCommands.sync(with: game) }
-        .onChange(of: game?.saveRevision) { _, _ in appCommands.sync(with: game) }
     }
 
     @ViewBuilder
@@ -348,10 +390,24 @@ struct ContentView: View {
             saveSlots: saveSlots,
             saveSlotsRevision: saveSlotsRevision,
             liveTimer: puzzleTimer,
-            onNewGame: handleNewGameButton,
-            onSelectSave: selectSave,
+            onNewGame: handleNewGameFromSidebar,
+            onSelectSave: selectSaveFromSidebar,
             onArchiveSave: archiveSave
         )
+    }
+
+    private func selectSaveFromSidebar(id: UUID) {
+        selectSave(id: id)
+        #if os(iOS)
+        showSavesSheet = false
+        #endif
+    }
+
+    private func handleNewGameFromSidebar() {
+        #if os(iOS)
+        showSavesSheet = false
+        #endif
+        handleNewGameButton()
     }
 
     private var detailColumn: some View {
@@ -470,9 +526,13 @@ struct ContentView: View {
     }
 
     private func toggleSidebar() {
+        #if os(iOS)
+        showSavesSheet.toggle()
+        #else
         withAnimation(.easeInOut(duration: 0.2)) {
             columnVisibility = columnVisibility == .all ? .detailOnly : .all
         }
+        #endif
     }
 
     private func toggleSettings() {
@@ -503,7 +563,7 @@ struct ContentView: View {
         withAnimation(detailNavigationAnimation) {
             clearActiveGameState()
             #if os(iOS)
-            columnVisibility = .detailOnly
+            showSavesSheet = false
             #endif
         }
     }
@@ -670,9 +730,7 @@ struct ContentView: View {
 
     private func performInitialSetup() {
         seedSheetDifficulty = lastFocusedDifficulty
-        #if os(iOS)
-        columnVisibility = .detailOnly
-        #else
+        #if os(macOS)
         columnVisibility = .all
         #endif
         if let id = UUID(uuidString: lastFocusedSaveIDString),

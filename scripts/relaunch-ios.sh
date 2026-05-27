@@ -21,22 +21,30 @@ xcodebuild \
   build
 
 PRODUCTS="$DERIVED/Build/Products/Debug-iphonesimulator"
-APP="$PRODUCTS/Sudylko.app"
+BIN="$PRODUCTS/Sudylko"
 
-if [[ ! -d "$APP" ]]; then
-  BIN="$PRODUCTS/Sudylko"
-  if [[ ! -f "$BIN" ]]; then
-    echo "error: no Sudylko.app or Sudylko binary under $PRODUCTS" >&2
-    exit 1
-  fi
-  echo "Wrapping binary into .app using iOS/Info.plist..."
+if [[ ! -f "$BIN" ]]; then
+  echo "error: no Sudylko binary under $PRODUCTS" >&2
+  exit 1
+fi
+
+# SPM via xcodebuild often emits a bare executable; always sync it into an .app bundle.
+if [[ -d "$PRODUCTS/Sudylko.app" ]]; then
+  APP="$PRODUCTS/Sudylko.app"
+else
+  echo "Assembling Sudylko.app from iOS/Info.plist..."
   APP="$ROOT/.build/Sudylko-iOS-Simulator.app"
   rm -rf "$APP"
   mkdir -p "$APP"
   cp "$ROOT/iOS/Info.plist" "$APP/Info.plist"
-  cp "$BIN" "$APP/Sudylko"
-  chmod +x "$APP/Sudylko"
 fi
+
+cp "$BIN" "$APP/Sudylko"
+chmod +x "$APP/Sudylko"
+if [[ ! -f "$APP/Info.plist" ]]; then
+  cp "$ROOT/iOS/Info.plist" "$APP/Info.plist"
+fi
+echo "Installed bundle uses binary built at $(stat -f "%Sm" "$BIN")"
 
 boot_sim() {
   local line state
