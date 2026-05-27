@@ -14,8 +14,6 @@ public enum DockIconRenderer {
         static let gridFill: CGFloat = 1.08
         static let masterPixels = 512
         static let dockTilePoints: CGFloat = 128
-        /// `contentView` has no system margin; inset to match `applicationIconImage` weight.
-        static let dockTileBodyFraction: CGFloat = 0.82
     }
 
     private static let accentDefaultsKey = "accentColor"
@@ -80,8 +78,6 @@ public enum DockIconRenderer {
         ("icon_512x512.png", 512),
         ("icon_512x512@2x.png", 1024),
     ]
-
-    public static func configureHostApplicationMask() {}
 
     public static func resolvedDockColorScheme() -> ColorScheme {
         let raw = SudylkoPreferenceAccess.string(forKey: appearanceDefaultsKey)
@@ -193,18 +189,11 @@ public enum DockIconRenderer {
 
     private static func applyQuitDockTileContent(_ image: NSImage, on dockTile: NSDockTile) {
         let tile = Layout.dockTilePoints
-        let body = tile * Layout.dockTileBodyFraction
-        let origin = (tile - body) / 2
-
-        let container = NSView(frame: NSRect(x: 0, y: 0, width: tile, height: tile))
-        let imageView = NSImageView(frame: NSRect(x: origin, y: origin, width: body, height: body))
+        let imageView = NSImageView(frame: NSRect(x: 0, y: 0, width: tile, height: tile))
         imageView.image = image
-        imageView.imageScaling = .scaleProportionallyDown
+        imageView.imageScaling = .scaleProportionallyUpOrDown
         imageView.imageAlignment = .alignCenter
-
-        container.subviews.forEach { $0.removeFromSuperview() }
-        container.addSubview(imageView)
-        dockTile.contentView = container
+        dockTile.contentView = imageView
         dockTile.display()
     }
 

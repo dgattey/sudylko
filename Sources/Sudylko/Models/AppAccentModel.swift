@@ -59,7 +59,6 @@ final class AppAccentModel: ObservableObject {
         SudylkoPreferenceAccess.synchronizeForDockPlugin()
         #if os(macOS)
         DockIconRenderer.invalidateCache()
-        SudylkoDockNotifications.postPreferencesDidChange()
         #endif
     }
 }
