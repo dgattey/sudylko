@@ -2,11 +2,13 @@
 import AppKit
 import SwiftUI
 
-/// Product icon — one bitmap (`masterIconImage`), no custom mask or reflection.
+/// Product icon — one square master bitmap (`masterIconImage`).
 ///
-/// - **Running:** `applicationIconImage` (built-in Dock chrome).
-/// - **Quit:** `NSDockTilePlugIn` shows the same bitmap in `contentView` (accent from preferences).
-/// - **Finder:** bundled `AppIcon.icns` from the same renderer at build time.
+/// Every visible surface uses the same template-inset, squircle-clipped image. The running
+/// app sets it on both `applicationIconImage` (covers Cmd-Tab, About, notifications) and on
+/// `dockTile.contentView` (which the Dock prefers over `applicationIconImage`). The quit
+/// `NSDockTilePlugIn` sets the same image on `contentView` from inside the Dock process.
+/// Finder uses bundled `AppIcon.icns` from the un-clipped master at build time.
 public enum DockIconRenderer {
     private enum Layout {
         static let canvas: CGFloat = 1024
@@ -14,6 +16,11 @@ public enum DockIconRenderer {
         static let gridFill: CGFloat = 1.08
         static let masterPixels = 512
         static let dockTilePoints: CGFloat = 128
+        /// macOS Big Sur+ icon template: the visible body fills 824/1024 of the canvas
+        /// (≈80%), leaving ≈10% margin per side so the dock tile matches other system apps.
+        static let templateBodyFraction: CGFloat = 824.0 / 1024.0
+        /// Squircle corner radius as a fraction of body size, per Apple's icon template.
+        static let templateCornerFraction: CGFloat = 185.4 / 824.0
     }
 
     private static let accentDefaultsKey = "accentColor"
@@ -55,6 +62,9 @@ public enum DockIconRenderer {
 
     private static var cachedKey: IconKey?
     private static var cachedMasterImage: NSImage?
+    private static var cachedClippedKey: IconKey?
+    private static var cachedClippedImage: NSImage?
+    private static var installedRunningKey: IconKey?
     private static var lastBadgeLabel: String?
 
     private static let digits: [(row: Int, col: Int, text: String, isGiven: Bool)] = [
@@ -95,6 +105,9 @@ public enum DockIconRenderer {
     public static func invalidateCache() {
         cachedKey = nil
         cachedMasterImage = nil
+        cachedClippedKey = nil
+        cachedClippedImage = nil
+        installedRunningKey = nil
     }
 
     public static func applySavedAccentDockArtwork() {
@@ -112,11 +125,11 @@ public enum DockIconRenderer {
     /// accent/appearance; the host owns the mirror and the plug-in only reads from it.
     public static func applyQuitStateDockTile(_ dockTile: NSDockTile) {
         SudylkoPreferenceAccess.refreshDockPluginCache()
-        let image = masterIconImage(
+        let clipped = dockTileClippedImage(
             accent: savedAccent(),
             colorScheme: resolvedDockColorScheme()
         )
-        applyQuitDockTileContent(image, on: dockTile)
+        installDockTileContentView(clipped, on: dockTile)
         applyBadgeLabel(nil, on: dockTile)
     }
 
@@ -180,14 +193,62 @@ public enum DockIconRenderer {
         return AppAccentColor(rawValue: raw) ?? .blue
     }
 
+    /// Re-installs the dock tile only when accent or appearance changed. Without this guard
+    /// the per-second timer tick and stray defaults churn would rebuild the contentView and
+    /// IPC to the Dock every call.
     private static func applyRunningDockIcon(accent: AppAccentColor, colorScheme: ColorScheme) {
+        let key = IconKey(accent: accent, colorScheme: colorScheme)
+        guard installedRunningKey != key else { return }
+        let image = dockTileClippedImage(accent: accent, colorScheme: colorScheme)
         let app = NSApplication.shared
-        app.dockTile.contentView = nil
-        app.applicationIconImage = masterIconImage(accent: accent, colorScheme: colorScheme)
-        app.dockTile.display()
+        app.applicationIconImage = image
+        installDockTileContentView(image, on: app.dockTile)
+        installedRunningKey = key
     }
 
-    private static func applyQuitDockTileContent(_ image: NSImage, on dockTile: NSDockTile) {
+    private static func dockTileClippedImage(accent: AppAccentColor, colorScheme: ColorScheme) -> NSImage {
+        let key = IconKey(accent: accent, colorScheme: colorScheme)
+        if cachedClippedKey == key, let cachedClippedImage {
+            return cachedClippedImage
+        }
+        let image = squircleClippedDockImage(
+            from: masterIconImage(accent: accent, colorScheme: colorScheme),
+            tilePoints: Layout.dockTilePoints
+        )
+        cachedClippedKey = key
+        cachedClippedImage = image
+        return image
+    }
+
+    /// Draws the master into a centered body the size of the Apple template (≈80% of the
+    /// tile) and clips to that body's squircle. The transparent margin around the body is
+    /// what makes the icon line up visually with Terminal, Settings, and other system apps
+    /// in the Dock.
+    private static func squircleClippedDockImage(from master: NSImage, tilePoints: CGFloat) -> NSImage {
+        let body = tilePoints * Layout.templateBodyFraction
+        let origin = (tilePoints - body) / 2
+
+        let size = NSSize(width: tilePoints, height: tilePoints)
+        let clipped = NSImage(size: size)
+        clipped.lockFocus()
+        NSGraphicsContext.saveGraphicsState()
+        defer {
+            NSGraphicsContext.restoreGraphicsState()
+            clipped.unlockFocus()
+        }
+        let bodyRect = NSRect(x: origin, y: origin, width: body, height: body)
+        let radius = body * Layout.templateCornerFraction
+        NSBezierPath(roundedRect: bodyRect, xRadius: radius, yRadius: radius).addClip()
+        master.draw(
+            in: bodyRect,
+            from: NSRect(origin: .zero, size: master.size),
+            operation: .copy,
+            fraction: 1
+        )
+        return clipped
+    }
+
+    private static func installDockTileContentView(_ image: NSImage, on dockTile: NSDockTile) {
         let tile = Layout.dockTilePoints
         let imageView = NSImageView(frame: NSRect(x: 0, y: 0, width: tile, height: tile))
         imageView.image = image

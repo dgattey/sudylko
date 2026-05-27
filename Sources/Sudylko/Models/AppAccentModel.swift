@@ -23,10 +23,12 @@ final class AppAccentModel: ObservableObject {
     private var defaultsObserver: NSObjectProtocol?
 
     init() {
-        refresh()
+        applyResolvedState(force: true)
+        // Filter to UserDefaults.standard so writes to the dock-plugin suite from
+        // `synchronizeForDockPlugin` don't bounce back into this observer and recurse.
         defaultsObserver = NotificationCenter.default.addObserver(
             forName: UserDefaults.didChangeNotification,
-            object: nil,
+            object: UserDefaults.standard,
             queue: .main
         ) { [weak self] _ in
             Task { @MainActor in
@@ -42,6 +44,14 @@ final class AppAccentModel: ObservableObject {
     }
 
     func refresh() {
+        applyResolvedState(force: false)
+    }
+
+    /// `UserDefaults.didChangeNotification` fires on any standard-defaults write, including the
+    /// app's many `@AppStorage` keys. Only do the SwiftUI invalidation + cross-process mirror
+    /// flush when accent/appearance actually changed; otherwise this runs on every tap and
+    /// hammers `dockPluginDefaults.synchronize()` from the main thread.
+    private func applyResolvedState(force: Bool) {
         let accentRaw = UserDefaults.standard.string(forKey: Keys.accent)
             ?? AppAccentColor.blue.rawValue
         let appearanceRaw = UserDefaults.standard.string(forKey: Keys.appearance)
@@ -50,6 +60,13 @@ final class AppAccentModel: ObservableObject {
         let resolvedAccent = AppAccentColor(rawValue: accentRaw) ?? .blue
         let resolvedAppearance = AppearanceMode(rawValue: appearanceRaw) ?? .system
         let scheme = resolvedAppearance.resolvedColorScheme(system: systemColorScheme)
+
+        if !force,
+           resolvedAccent == accent,
+           resolvedAppearance == appearanceMode,
+           scheme == resolvedColorScheme {
+            return
+        }
 
         accent = resolvedAccent
         appearanceMode = resolvedAppearance
