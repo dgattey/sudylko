@@ -24,10 +24,14 @@ public enum SudylkoPreferenceAccess {
         #endif
     }
 
-    /// Plug-in side: refresh the in-memory cache from disk before reading, so updates the host
-    /// flushed before quitting are visible.
+    /// Plug-in side: force the dock-extra process's preferences cache for our suite to
+    /// re-read from disk before the next get. `UserDefaults.synchronize()` alone is largely
+    /// a no-op on modern macOS for cross-process suites, so we go through `CFPreferences`
+    /// directly to invalidate the cfprefsd cache, then synchronize the NSUserDefaults
+    /// instance so its in-memory cache reloads with the fresh values.
     public static func refreshDockPluginCache() {
         #if os(macOS)
+        CFPreferencesAppSynchronize(dockPluginSuiteName as CFString)
         dockPluginDefaults.synchronize()
         #endif
     }

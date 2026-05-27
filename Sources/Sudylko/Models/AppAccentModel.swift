@@ -62,7 +62,15 @@ final class AppAccentModel: ObservableObject {
         let resolvedAppearance = AppearanceMode(rawValue: appearanceRaw) ?? .system
         let scheme = resolvedAppearance.resolvedColorScheme(system: systemColorScheme)
 
-        SudylkoPreferenceAccess.synchronizeIfNeeded()
+        let suiteChanged = SudylkoPreferenceAccess.synchronizeIfNeeded()
+        #if os(macOS)
+        if suiteChanged {
+            // Notify the dock-extra plug-in to re-render so a quit right now picks up
+            // the change. The plug-in's `setDockTile` is only called once per plug-in
+            // load, so without this kick the Dock keeps showing the old quit-state icon.
+            SudylkoDockNotifications.postPreferencesDidChange()
+        }
+        #endif
 
         if !force,
            resolvedAccent == accent,

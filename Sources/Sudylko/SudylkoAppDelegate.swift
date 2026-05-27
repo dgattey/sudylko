@@ -56,6 +56,9 @@ final class SudylkoAppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         SudylkoPreferenceAccess.flushForTerminate()
+        // The Dock keeps the plug-in's cached contentView between launches, so kick it to
+        // re-render against the suite values we just flushed.
+        SudylkoDockNotifications.postPreferencesDidChange()
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
