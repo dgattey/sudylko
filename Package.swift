@@ -9,7 +9,7 @@ let package = Package(
     ],
     products: [
         .executable(name: "Sudylko", targets: ["Sudylko"]),
-        .executable(name: "SudylkoIconExport", targets: ["SudylkoIconExport"]),
+        .library(name: "SudylkoDockTilePlugin", type: .dynamic, targets: ["SudylkoDockTilePlugin"]),
     ],
     targets: [
         .target(
@@ -21,10 +21,21 @@ let package = Package(
             dependencies: ["SudylkoShared"],
             path: "Sources/Sudylko"
         ),
-        .executableTarget(
-            name: "SudylkoIconExport",
+        .target(
+            name: "SudylkoDockTilePlugin",
             dependencies: ["SudylkoShared"],
-            path: "Sources/SudylkoIconExport"
+            path: "Sources/SudylkoDockTilePlugin",
+            linkerSettings: [
+                .linkedFramework("AppKit", .when(platforms: [.macOS])),
+                .unsafeFlags(
+                    [
+                        "-Xlinker", "-bundle",
+                        "-Xlinker", "-undefined",
+                        "-Xlinker", "dynamic_lookup",
+                    ],
+                    .when(platforms: [.macOS])
+                ),
+            ]
         ),
     ]
 )

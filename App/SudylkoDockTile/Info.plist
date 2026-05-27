@@ -4,29 +4,21 @@
 <dict>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>en</string>
-	<key>CFBundleDisplayName</key>
-	<string>Sudylko</string>
 	<key>CFBundleExecutable</key>
-	<string>Sudylko</string>
+	<string>SudylkoDockTile</string>
 	<key>CFBundleIdentifier</key>
-	<string>com.sudylko.mac</string>
+	<string>com.sudylko.mac.docktile</string>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
-	<string>Sudylko</string>
+	<string>SudylkoDockTile</string>
 	<key>CFBundlePackageType</key>
-	<string>APPL</string>
+	<string>BNDL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>1.0.0</string>
+	<string>1.0</string>
 	<key>CFBundleVersion</key>
 	<string>1</string>
-	<key>LSMinimumSystemVersion</key>
-	<string>14.0</string>
-	<key>NSHighResolutionCapable</key>
-	<true/>
-	<key>NSDockTilePlugIn</key>
-	<string>SudylkoDockTile.docktileplugin</string>
 	<key>NSPrincipalClass</key>
-	<string>NSApplication</string>
+	<string>SudylkoDockTilePlugIn</string>
 </dict>
 </plist>

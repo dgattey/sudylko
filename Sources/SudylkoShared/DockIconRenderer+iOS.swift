@@ -9,6 +9,8 @@ public enum DockIconRenderer {
 
     public static func applySavedAccentDockArtwork() {}
 
+    public static func invalidateCache() {}
+
     public static func updateDockIcon(
         accent: AppAccentColor,
         colorScheme: ColorScheme,

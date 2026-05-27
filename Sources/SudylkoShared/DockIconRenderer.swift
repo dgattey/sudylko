@@ -2,29 +2,28 @@
 import AppKit
 import SwiftUI
 
-/// Dock icon artwork plus standard `NSDockTile` badge labels (timer / Paused).
+/// Product icon — one bitmap (`masterIconImage`), no custom mask or reflection.
 ///
-/// Mac App Store: only `NSApplication.applicationIconImage` may change the Dock icon at runtime.
-/// Do not modify the app bundle on disk (`NSWorkspace.setIcon`, rewriting `AppIcon.icns`, etc.).
-/// The quit-state icon comes from the signed `AppIcon.icns` produced at build time.
+/// - **Running:** `applicationIconImage` (built-in Dock chrome).
+/// - **Quit:** `NSDockTilePlugIn` shows the same bitmap in `contentView` (accent from preferences).
+/// - **Finder:** bundled `AppIcon.icns` from the same renderer at build time.
 public enum DockIconRenderer {
-    private static let canvasSize: CGFloat = 1024
-    /// Standard macOS icon content inset (~9% margin).
-    private static let iconInset: CGFloat = 96
-    /// Base point size for the Dock tile; rasterized at screen scale for sharpness.
-    private static let dockIconPointSize: CGFloat = 128
-
-    private static var dockRasterPixelSize: Int {
-        let scale = NSScreen.main?.backingScaleFactor ?? 2
-        return max(128, Int((dockIconPointSize * scale).rounded()))
+    private enum Layout {
+        static let canvas: CGFloat = 1024
+        /// Grid fill vs canvas (zoom); macOS applies icon shape — do not pre-mask.
+        static let gridFill: CGFloat = 1.08
+        static let masterPixels = 512
+        static let dockTilePoints: CGFloat = 128
+        /// `contentView` has no system margin; inset to match `applicationIconImage` weight.
+        static let dockTileBodyFraction: CGFloat = 0.82
     }
+
     private static let accentDefaultsKey = "accentColor"
     private static let appearanceDefaultsKey = "appearanceMode"
 
-    private struct CacheKey: Equatable {
+    private struct IconKey: Equatable {
         let accent: AppAccentColor
         let colorScheme: ColorScheme
-        let applyAccentDigits: Bool
     }
 
     private struct IconPalette {
@@ -56,8 +55,8 @@ public enum DockIconRenderer {
         }
     }
 
-    private static var cachedKey: CacheKey?
-    private static var cachedImage: NSImage?
+    private static var cachedKey: IconKey?
+    private static var cachedMasterImage: NSImage?
     private static var lastBadgeLabel: String?
 
     private static let digits: [(row: Int, col: Int, text: String, isGiven: Bool)] = [
@@ -82,28 +81,47 @@ public enum DockIconRenderer {
         ("icon_512x512@2x.png", 1024),
     ]
 
-    /// Resolves appearance from stored settings (same keys as the app).
+    public static func configureHostApplicationMask() {}
+
     public static func resolvedDockColorScheme() -> ColorScheme {
-        let raw = UserDefaults.standard.string(forKey: appearanceDefaultsKey) ?? "system"
+        let raw = SudylkoPreferenceAccess.string(forKey: appearanceDefaultsKey)
+            ?? UserDefaults.standard.string(forKey: appearanceDefaultsKey)
+            ?? "system"
         switch raw {
-        case "light":
-            return .light
-        case "dark":
-            return .dark
+        case "light": return .light
+        case "dark": return .dark
         default:
-            let match = NSApp.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua])
-            return match == .darkAqua ? .dark : .light
+            let appearance = NSApp?.effectiveAppearance ?? NSAppearance.currentDrawing()
+            return appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? .dark : .light
         }
     }
 
-    /// Applies saved accent and appearance artwork on launch (before first window).
+    public static func invalidateCache() {
+        cachedKey = nil
+        cachedMasterImage = nil
+    }
+
     public static func applySavedAccentDockArtwork() {
-        let raw = UserDefaults.standard.string(forKey: accentDefaultsKey)
-            ?? AppAccentColor.blue.rawValue
-        let accent = AppAccentColor(rawValue: raw) ?? .blue
-        let colorScheme = resolvedDockColorScheme()
-        applyDockArtwork(accent: accent, colorScheme: colorScheme, applyAccentDigits: true)
-        applyBadgeLabel(nil)
+        updateDockIcon(
+            accent: savedAccent(),
+            colorScheme: resolvedDockColorScheme(),
+            inGame: false,
+            showPaused: false,
+            timerText: nil
+        )
+    }
+
+    /// Quit: same master bitmap as running (plug-in has no `applicationIconImage`).
+    /// Refreshes the dock-plugin pref cache before reading so we see the host's last-written
+    /// accent/appearance; the host owns the mirror and the plug-in only reads from it.
+    public static func applyQuitStateDockTile(_ dockTile: NSDockTile) {
+        SudylkoPreferenceAccess.refreshDockPluginCache()
+        let image = masterIconImage(
+            accent: savedAccent(),
+            colorScheme: resolvedDockColorScheme()
+        )
+        applyQuitDockTileContent(image, on: dockTile)
+        applyBadgeLabel(nil, on: dockTile)
     }
 
     public static func updateDockIcon(
@@ -113,7 +131,7 @@ public enum DockIconRenderer {
         showPaused: Bool,
         timerText: String?
     ) {
-        applyDockArtwork(accent: accent, colorScheme: colorScheme, applyAccentDigits: true)
+        applyRunningDockIcon(accent: accent, colorScheme: colorScheme)
 
         let badgeLabel: String?
         if inGame, showPaused {
@@ -123,10 +141,9 @@ public enum DockIconRenderer {
         } else {
             badgeLabel = nil
         }
-        applyBadgeLabel(badgeLabel)
+        applyBadgeLabel(badgeLabel, on: NSApplication.shared.dockTile)
     }
 
-    /// Writes `AppIcon.iconset` using the same masked pipeline as the running Dock tile.
     public static func exportIconSet(
         to iconsetDirectory: URL,
         accent: AppAccentColor,
@@ -137,105 +154,14 @@ public enum DockIconRenderer {
         try? fm.createDirectory(at: iconsetDirectory, withIntermediateDirectories: true)
         for entry in iconsetSizes {
             let url = iconsetDirectory.appendingPathComponent(entry.name)
-            let image = maskedIconImage(
-                pixelSize: entry.pixels,
+            let image = iconImage(
                 accent: accent,
                 colorScheme: scheme,
-                applyAccentDigits: true
+                pixelSize: entry.pixels
             )
             guard let data = pngData(from: image) else { continue }
             try? data.write(to: url)
         }
-    }
-
-    private static func applyDockArtwork(
-        accent: AppAccentColor,
-        colorScheme: ColorScheme,
-        applyAccentDigits: Bool
-    ) {
-        let key = CacheKey(accent: accent, colorScheme: colorScheme, applyAccentDigits: applyAccentDigits)
-        if cachedKey != key || cachedImage == nil {
-            cachedKey = key
-            cachedImage = dockTileImage(
-                accent: accent,
-                colorScheme: colorScheme,
-                applyAccentDigits: applyAccentDigits
-            )
-            NSApplication.shared.applicationIconImage = cachedImage
-        }
-    }
-
-    /// Running Dock tile: squircle interior from live artwork, outer glow from system compositing.
-    ///
-    /// `NSWorkspace`’s full icon at dock sizes is a rounded rect; only pixels *outside* the
-    /// bundled squircle mask are taken from it so quit and running silhouettes match.
-    private static func dockTileImage(
-        accent: AppAccentColor,
-        colorScheme: ColorScheme,
-        applyAccentDigits: Bool
-    ) -> NSImage {
-        let pixelSize = dockRasterPixelSize
-        let size = NSSize(width: pixelSize, height: pixelSize)
-        let artwork = maskedIconImage(
-            pixelSize: pixelSize,
-            accent: accent,
-            colorScheme: colorScheme,
-            applyAccentDigits: applyAccentDigits
-        )
-
-        let composite = NSImage(size: size)
-        composite.lockFocus()
-        defer { composite.unlockFocus() }
-        let rect = NSRect(origin: .zero, size: size)
-
-        if let glowRing = dockGlowRing(size: size) {
-            glowRing.draw(in: rect, from: .zero, operation: .copy, fraction: 1)
-        }
-        artwork.draw(in: rect, from: .zero, operation: .sourceOver, fraction: 1)
-        return composite
-    }
-
-    /// Workspace icon with squircle interior removed — bezel / shadow only.
-    private static func dockGlowRing(size: NSSize) -> NSImage? {
-        let bundlePath = MacAppIconMask.maskBundlePath ?? Bundle.main.bundlePath
-        guard FileManager.default.fileExists(atPath: bundlePath) else { return nil }
-
-        // Sample large so the outer ring is not lost when the Dock scales down.
-        let sampleSide = max(size.width, 512)
-        let sampleSize = NSSize(width: sampleSide, height: sampleSide)
-
-        let workspace = NSWorkspace.shared.icon(forFile: bundlePath)
-        workspace.size = sampleSize
-        let squircleMask = MacAppIconMask.squircleAlphaMask(size: sampleSize)
-
-        let sampleGlow = NSImage(size: sampleSize)
-        sampleGlow.lockFocus()
-        defer { sampleGlow.unlockFocus() }
-        let sampleRect = NSRect(origin: .zero, size: sampleSize)
-        workspace.draw(in: sampleRect, from: .zero, operation: .copy, fraction: 1)
-        squircleMask.draw(in: sampleRect, from: .zero, operation: .destinationOut, fraction: 1)
-
-        return scaleImage(sampleGlow, to: Int(size.width.rounded()))
-    }
-
-    /// Scale artwork, then clip to the app squircle — used for `AppIcon.icns` export (no Dock chrome baked in).
-    private static func maskedIconImage(
-        pixelSize: Int,
-        accent: AppAccentColor,
-        colorScheme: ColorScheme,
-        applyAccentDigits: Bool
-    ) -> NSImage {
-        let artwork = renderArtwork(accent: accent, colorScheme: colorScheme, applyAccentDigits: applyAccentDigits)
-        let scaled = scaleImage(artwork, to: pixelSize)
-        return MacAppIconMask.applyingMask(to: scaled)
-    }
-
-    private static func applyBadgeLabel(_ label: String?) {
-        guard label != lastBadgeLabel else { return }
-        lastBadgeLabel = label
-        let dockTile = NSApplication.shared.dockTile
-        dockTile.badgeLabel = label
-        dockTile.display()
     }
 
     public static func renderIcon(
@@ -243,32 +169,105 @@ public enum DockIconRenderer {
         colorScheme: ColorScheme,
         applyAccentDigits: Bool
     ) -> NSImage {
-        renderArtwork(accent: accent, colorScheme: colorScheme, applyAccentDigits: applyAccentDigits)
+        iconImage(
+            accent: accent,
+            colorScheme: colorScheme,
+            pixelSize: Int(Layout.canvas),
+            applyAccentDigits: applyAccentDigits
+        )
     }
 
-    private static func renderArtwork(
+    private static func savedAccent() -> AppAccentColor {
+        let raw = SudylkoPreferenceAccess.string(forKey: accentDefaultsKey)
+            ?? UserDefaults.standard.string(forKey: accentDefaultsKey)
+            ?? AppAccentColor.blue.rawValue
+        return AppAccentColor(rawValue: raw) ?? .blue
+    }
+
+    private static func applyRunningDockIcon(accent: AppAccentColor, colorScheme: ColorScheme) {
+        let app = NSApplication.shared
+        app.dockTile.contentView = nil
+        app.applicationIconImage = masterIconImage(accent: accent, colorScheme: colorScheme)
+        app.dockTile.display()
+    }
+
+    private static func applyQuitDockTileContent(_ image: NSImage, on dockTile: NSDockTile) {
+        let tile = Layout.dockTilePoints
+        let body = tile * Layout.dockTileBodyFraction
+        let origin = (tile - body) / 2
+
+        let container = NSView(frame: NSRect(x: 0, y: 0, width: tile, height: tile))
+        let imageView = NSImageView(frame: NSRect(x: origin, y: origin, width: body, height: body))
+        imageView.image = image
+        imageView.imageScaling = .scaleProportionallyDown
+        imageView.imageAlignment = .alignCenter
+
+        container.subviews.forEach { $0.removeFromSuperview() }
+        container.addSubview(imageView)
+        dockTile.contentView = container
+        dockTile.display()
+    }
+
+    private static func applyBadgeLabel(_ label: String?, on dockTile: NSDockTile) {
+        guard label != lastBadgeLabel else { return }
+        lastBadgeLabel = label
+        dockTile.badgeLabel = label
+        dockTile.display()
+    }
+
+    private static func masterIconImage(accent: AppAccentColor, colorScheme: ColorScheme) -> NSImage {
+        let key = IconKey(accent: accent, colorScheme: colorScheme)
+        if cachedKey == key, let cachedMasterImage {
+            return cachedMasterImage
+        }
+        let image = iconImage(
+            accent: accent,
+            colorScheme: colorScheme,
+            pixelSize: Layout.masterPixels
+        )
+        cachedKey = key
+        cachedMasterImage = image
+        return image
+    }
+
+    private static func iconImage(
+        accent: AppAccentColor,
+        colorScheme: ColorScheme,
+        pixelSize: Int,
+        applyAccentDigits: Bool = true
+    ) -> NSImage {
+        let artwork = renderProductIcon(
+            accent: accent,
+            colorScheme: colorScheme,
+            applyAccentDigits: applyAccentDigits
+        )
+        return scaleImage(artwork, to: pixelSize)
+    }
+
+    /// Square master artwork; macOS applies icon shape and Dock chrome.
+    private static func renderProductIcon(
         accent: AppAccentColor,
         colorScheme: ColorScheme,
         applyAccentDigits: Bool
     ) -> NSImage {
         let palette = IconPalette.make(colorScheme: colorScheme)
-        let size = NSSize(width: canvasSize, height: canvasSize)
+        let size = NSSize(width: Layout.canvas, height: Layout.canvas)
         let image = NSImage(size: size)
         image.lockFocus()
+        defer { image.unlockFocus() }
 
         let fullRect = NSRect(origin: .zero, size: size)
         palette.canvas.setFill()
         fullRect.fill()
 
-        let iconRect = fullRect.insetBy(dx: iconInset, dy: iconInset)
-        let gridScale: CGFloat = 1.22 * 0.95
-        let gridSide = iconRect.width * gridScale
+        let gridSide = Layout.canvas * Layout.gridFill
         let gridRect = NSRect(
-            x: iconRect.midX - gridSide / 2,
-            y: iconRect.midY - gridSide / 2,
+            x: fullRect.midX - gridSide / 2,
+            y: fullRect.midY - gridSide / 2,
             width: gridSide,
             height: gridSide
         )
+
         drawCellBackgrounds(
             in: gridRect,
             accent: accent,
@@ -285,7 +284,6 @@ public enum DockIconRenderer {
             applyAccentDigits: applyAccentDigits
         )
 
-        image.unlockFocus()
         return image
     }
 
@@ -299,6 +297,7 @@ public enum DockIconRenderer {
         let target = NSSize(width: pixelSize, height: pixelSize)
         let scaled = NSImage(size: target)
         scaled.lockFocus()
+        NSGraphicsContext.current?.imageInterpolation = .high
         image.draw(
             in: NSRect(origin: .zero, size: target),
             from: NSRect(origin: .zero, size: image.size),
@@ -341,17 +340,14 @@ public enum DockIconRenderer {
         let cellW = rect.width / 3
         let cellH = rect.height / 3
         palette.grid.setStroke()
-
         for i in 0...3 {
             let x = rect.minX + CGFloat(i) * cellW
             let y = rect.minY + CGFloat(i) * cellH
-
             let vertical = NSBezierPath()
             vertical.move(to: NSPoint(x: x, y: rect.minY))
             vertical.line(to: NSPoint(x: x, y: rect.maxY))
             vertical.lineWidth = 4
             vertical.stroke()
-
             let horizontal = NSBezierPath()
             horizontal.move(to: NSPoint(x: rect.minX, y: y))
             horizontal.line(to: NSPoint(x: rect.maxX, y: y))
@@ -370,7 +366,6 @@ public enum DockIconRenderer {
         let cellW = rect.width / 3
         let cellH = rect.height / 3
         let accentColor = accent.nsAccentForeground(for: colorScheme)
-
         for spec in digits {
             let useAccent = applyAccentDigits && !spec.isGiven
             let fontSize = min(cellW, cellH) * 0.58

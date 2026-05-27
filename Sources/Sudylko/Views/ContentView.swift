@@ -115,7 +115,16 @@ struct ContentView: View {
             }
             .onChange(of: game?.isLost, handleGameLossChange)
             .onChange(of: game?.saveRevision) { _, _ in schedulePersist() }
-            .onChange(of: appAccent.accent) { _, _ in updateDockIcon() }
+            #if os(macOS)
+            .onChange(of: appAccent.accent) { _, _ in
+                DockIconRenderer.invalidateCache()
+                updateDockIcon()
+            }
+            .onChange(of: appAccent.resolvedColorScheme) { _, _ in
+                DockIconRenderer.invalidateCache()
+                updateDockIcon()
+            }
+            #endif
             .onChange(of: revealMistakesImmediately) { _, _ in
                 applyGameplaySettingsToActiveGame()
             }

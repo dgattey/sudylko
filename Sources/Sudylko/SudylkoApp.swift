@@ -14,9 +14,6 @@ struct SudylkoApp: App {
                 .environmentObject(appCommands)
                 .environmentObject(appAccent)
                 .appAccentPropagation(appAccent)
-                .onAppear {
-                    DockIconRenderer.applySavedAccentDockArtwork()
-                }
         }
         .defaultSize(width: 820, height: 720)
         .windowToolbarStyle(.unified(showsTitle: false))

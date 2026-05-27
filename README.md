@@ -17,7 +17,8 @@ This repo is a Swift Package Manager app, not a web or Xcode-project monorepo.
 | ------------------------------ | ---------------------------------------------- |
 | `Sources/Sudylko/`             | Main app (SwiftUI, menus, saves, achievements) |
 | `Sources/SudylkoShared/`       | Shared types and dock icon rendering           |
-| `Sources/SudylkoIconExport/`   | CLI that renders `App/Icon.icns` at build time |
+| `Sources/SudylkoDockTilePlugin/` | `NSDockTilePlugIn` (quit-state Dock icon)    |
+| `App/SudylkoDockTile/Info.plist` | Plug-in bundle metadata                      |
 | `Sources/Sudylko/Engine/`      | `PuzzleGenerator`, `PuzzleSeed`, `SeededRNG`   |
 | `App/Info.plist`               | Bundle metadata (`com.sudylko.mac`)            |
 | `scripts/build-app.sh`         | Default build, icon, assemble `.app`, launch   |
@@ -41,7 +42,7 @@ The script:
 
 1. Runs `swift build -c debug` (binaries under `.build/debug/`).
 2. Assembles `Sudylko.app` in the repo root.
-3. Regenerates the masked app icon from current accent/appearance settings.
+3. Copies bundled `App/Icon.icns` into the `.app` (regenerate manually with `scripts/generate-app-icon.sh` when needed).
 4. Quits any running Sudylko and opens a fresh instance with `open -n`.
 
 Use this script as the default verify loop after UI or behavior changes. A bare `open Sudylko.app` without rebuilding can show stale code.
@@ -106,7 +107,7 @@ DESTINATION='platform=iOS Simulator,name=iPhone 15' ./scripts/build-ios.sh
 | Entry | `SudylkoApp.swift` + app delegate | `SudylkoApp+iOS.swift` |
 | Keyboard play | `BoardKeyboardHost` (digits, undo, space) | On-screen number pad |
 | Home progress | Trailing `.inspector` | Sheet with `HomeProgressPaneView` |
-| Dock / menu icon | `DockIconRenderer` + `SudylkoIconExport` | Not used (stubs in `DockIconRenderer+iOS.swift`) |
+| Dock / menu icon | `DockIconRenderer` + `SudylkoDockTile.docktileplugin` | Not used (stubs in `DockIconRenderer+iOS.swift`) |
 | Window chrome | `WindowConfigurator`, unified toolbar | Standard navigation; sidebar collapses in-game |
 
 Saves, achievements, puzzle generation, and settings use the same `UserDefaults` keys on both platforms.
@@ -118,14 +119,15 @@ Sudylko is intended for Mac App Store distribution eventually. Avoid approaches 
 **Do not use**
 
 - `NSWorkspace.setIcon` (or similar) to rewrite the app bundle icon on disk.
-- `NSDockTilePlugIn` or other dock-tile plugins.
 - Runtime `iconutil` / bundle icon swapping.
 
-**Do use**
+**Dock icon (direct distribution)**
 
-- Static `App/Icon.icns` produced at build time via `SudylkoIconExport` and `scripts/generate-app-icon.sh`.
-- `NSApplication.applicationIconImage` only while the app is running (live dock preview).
-- Documented constraints in `Sources/SudylkoShared/DockIconRenderer.swift`.
+- One square bitmap in `DockIconRenderer.swift` (no custom squircle mask).
+- **Running:** `applicationIconImage` (built-in Dock chrome).
+- **Quit:** `SudylkoDockTile.docktileplugin` shows the same bitmap (accent from preferences).
+- **Finder:** bundled `AppIcon.icns` (regen on `build-app.sh`).
+- `NSDockTilePlugIn` is not Mac App Store–eligible.
 
 Accent and light/dark appearance affect the generated icon. Re-run `build-app.sh` after changing accent defaults if you care about the on-disk icon matching.
 

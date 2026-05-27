@@ -56,5 +56,10 @@ final class AppAccentModel: ObservableObject {
         resolvedColorScheme = scheme
         interactiveTint = resolvedAccent.interactiveForeground(for: scheme)
         prominentTint = resolvedAccent.displayColor(for: scheme)
+        SudylkoPreferenceAccess.synchronizeForDockPlugin()
+        #if os(macOS)
+        DockIconRenderer.invalidateCache()
+        SudylkoDockNotifications.postPreferencesDidChange()
+        #endif
     }
 }
