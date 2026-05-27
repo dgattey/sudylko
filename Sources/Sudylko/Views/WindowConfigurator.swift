@@ -5,6 +5,7 @@ import SwiftUI
 /// Aligns the NSWindow with the in-app appearance picker and publishes `NSApp.isActive`.
 struct WindowConfigurator: NSViewRepresentable {
     let appearanceMode: AppearanceMode
+    var minimumWindowSize: CGSize = CGSize(width: 780, height: 640)
     @Binding var isAppActive: Bool
     @Binding var isWindowMiniaturized: Bool
     @Binding var isWindowFullscreen: Bool
@@ -40,14 +41,14 @@ struct WindowConfigurator: NSViewRepresentable {
             isWindowFullscreen = fullscreen
         }
         DispatchQueue.main.async {
-            configure(nsView.window, mode: appearanceMode)
+            configure(nsView.window, mode: appearanceMode, minimumSize: minimumWindowSize)
             isAppActive = NSApp.isActive
             isWindowMiniaturized = nsView.window?.isMiniaturized ?? false
             isWindowFullscreen = nsView.window?.styleMask.contains(.fullScreen) == true
         }
     }
 
-    private func configure(_ window: NSWindow?, mode: AppearanceMode) {
+    private func configure(_ window: NSWindow?, mode: AppearanceMode, minimumSize: CGSize) {
         guard let window else { return }
         window.titlebarAppearsTransparent = true
         window.titleVisibility = .hidden
@@ -58,6 +59,12 @@ struct WindowConfigurator: NSViewRepresentable {
         window.backgroundColor = .clear
         window.hasShadow = true
         window.titlebarSeparatorStyle = .none
+        window.minSize = minimumSize
+        if window.frame.width < minimumSize.width {
+            var frame = window.frame
+            frame.size.width = minimumSize.width
+            window.setFrame(frame, display: true, animate: true)
+        }
     }
 }
 

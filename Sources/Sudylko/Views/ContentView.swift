@@ -28,7 +28,11 @@ struct ContentView: View {
     @State private var showKeyboardShortcuts = false
     @State private var showGameArchiveConfirmation = false
     @State private var showGameRestartConfirmation = false
+    #if os(iOS)
+    @State private var columnVisibility: NavigationSplitViewVisibility = .detailOnly
+    #else
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
+    #endif
     @State private var homeProgressInspectorPresented = false
     @State private var homeInspectorSection: HomeProgressSection?
     @StateObject private var puzzleTimer = PuzzleTimer()
@@ -56,6 +60,19 @@ struct ContentView: View {
         game != nil && activeSaveID != nil
     }
 
+    #if os(macOS)
+    private var showsSidebar: Bool {
+        columnVisibility != .detailOnly
+    }
+
+    private var macWindowMinimumSize: CGSize {
+        WindowLayoutMetrics.minimumSize(
+            showsSidebar: showsSidebar,
+            showsHomeInspector: !isInGame && homeProgressInspectorPresented
+        )
+    }
+    #endif
+
     private var lastFocusedDifficulty: GameDifficulty {
         if let id = UUID(uuidString: lastFocusedSaveIDString),
            let state = GameSaveStore.load(id: id) {
@@ -68,16 +85,26 @@ struct ContentView: View {
         appChrome
     }
 
+    private var keyboardShortcutsSheet: some View {
+        KeyboardShortcutsView()
+            .environment(\.colorScheme, resolvedColorScheme)
+    }
+
     /// Wraps all window UI including sheets so accent `tint` is not scoped only to `rootSplitView`.
     private var appChrome: some View {
+        appChromeWithLifecycle
+    }
+
+    private var appChromeWithSheets: some View {
         rootSplitView
             .overlay { gameOverlays }
             .animation(.spring(response: 0.45, dampingFraction: 0.82), value: game?.isPuzzleEnded == true)
             .sheet(isPresented: $showSeedSheet) { seedSheet }
-            .sheet(isPresented: $showKeyboardShortcuts) {
-                KeyboardShortcutsView()
-                    .environment(\.colorScheme, resolvedColorScheme)
-            }
+            .sheet(isPresented: $showKeyboardShortcuts) { keyboardShortcutsSheet }
+    }
+
+    private var appChromeWithLifecycle: some View {
+        appChromeWithSheets
             .onAppear {
                 AppCommandState.live = appCommands
                 appAccent.refresh()
@@ -100,13 +127,22 @@ struct ContentView: View {
     private var rootSplitView: some View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
             sidebar
+                #if os(macOS)
                 .navigationSplitViewColumnWidth(SidebarMetrics.width)
+                #endif
         } detail: {
             detailColumn
         }
-        .navigationSplitViewStyle(.balanced)
         #if os(macOS)
-        .frame(minWidth: 780, minHeight: 640)
+        .navigationSplitViewStyle(.balanced)
+        #else
+        .navigationSplitViewStyle(.automatic)
+        #endif
+        #if os(macOS)
+        .frame(
+            minWidth: macWindowMinimumSize.width,
+            minHeight: macWindowMinimumSize.height
+        )
         #endif
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .hiddenWindowToolbar()
@@ -119,6 +155,7 @@ struct ContentView: View {
         #if os(macOS)
         .background(WindowConfigurator(
             appearanceMode: appearanceMode,
+            minimumWindowSize: macWindowMinimumSize,
             isAppActive: $isAppActive,
             isWindowMiniaturized: $isWindowMiniaturized,
             isWindowFullscreen: $isWindowFullscreen
@@ -361,9 +398,17 @@ struct ContentView: View {
                 settingsToolbarButton
             }
         } else {
+            #if os(iOS)
+            ToolbarItem(placement: .topBarLeading) {
+                Button("Saves", systemImage: "sidebar.left") {
+                    toggleSidebar()
+                }
+            }
+            #else
             ToolbarItem {
                 Spacer()
             }
+            #endif
             ToolbarItem(placement: .primaryAction) {
                 settingsToolbarButton
             }
@@ -448,6 +493,9 @@ struct ContentView: View {
         pauseAndPersistOutgoingGame()
         withAnimation(detailNavigationAnimation) {
             clearActiveGameState()
+            #if os(iOS)
+            columnVisibility = .detailOnly
+            #endif
         }
     }
 
@@ -613,7 +661,11 @@ struct ContentView: View {
 
     private func performInitialSetup() {
         seedSheetDifficulty = lastFocusedDifficulty
+        #if os(iOS)
+        columnVisibility = .detailOnly
+        #else
         columnVisibility = .all
+        #endif
         if let id = UUID(uuidString: lastFocusedSaveIDString),
            GameSaveStore.load(id: id) == nil {
             lastFocusedSaveIDString = ""

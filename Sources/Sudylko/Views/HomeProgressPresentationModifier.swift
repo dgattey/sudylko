@@ -10,7 +10,11 @@ struct HomeProgressPresentationModifier: ViewModifier {
         content
             .inspector(isPresented: $isPresented) {
                 HomeProgressPaneView(section: section)
-                    .inspectorColumnWidth(min: 260, ideal: 300, max: 400)
+                    .inspectorColumnWidth(
+                        min: WindowLayoutMetrics.homeInspectorMinWidth,
+                        ideal: 300,
+                        max: 400
+                    )
                     .padding(.horizontal, 16)
                     .padding(.vertical, 12)
             }

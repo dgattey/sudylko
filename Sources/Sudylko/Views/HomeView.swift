@@ -29,7 +29,11 @@ struct HomeView: View {
     ]
 
     private static let gridMaxWidth: CGFloat = 420
+    #if os(macOS)
+    private static let leftColumnMaxWidth: CGFloat = WindowLayoutMetrics.homeDetailMinWidth
+    #else
     private static let leftColumnMaxWidth: CGFloat = 460
+    #endif
 
     private var windowMaterial: WindowBackgroundMaterial {
         let stored = WindowBackgroundMaterial(rawValue: materialRaw) ?? .default

@@ -73,3 +73,29 @@ enum SidebarMetrics {
     static let columnEdgePadding: CGFloat = 8
     #endif
 }
+
+#if os(macOS)
+/// Minimum window size given which home chrome columns are visible.
+enum WindowLayoutMetrics {
+    static let minHeight: CGFloat = 640
+    /// Matches `HomeView` center column content width.
+    static let homeDetailMinWidth: CGFloat = 460
+    static let homeInspectorMinWidth: CGFloat = 260
+    static func minimumSize(
+        showsSidebar: Bool,
+        showsHomeInspector: Bool
+    ) -> CGSize {
+        var width = homeDetailMinWidth
+        if showsSidebar {
+            width += SidebarMetrics.width
+        }
+        if showsHomeInspector {
+            width += homeInspectorMinWidth
+        }
+        return CGSize(
+            width: max(780, width),
+            height: minHeight
+        )
+    }
+}
+#endif

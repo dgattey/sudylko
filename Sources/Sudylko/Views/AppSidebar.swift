@@ -86,7 +86,11 @@ struct AppSidebar: View {
             .padding(.horizontal, SidebarMetrics.horizontalPadding)
             .padding(.vertical, 12)
         }
+        #if os(macOS)
         .frame(width: SidebarMetrics.width)
+        #else
+        .frame(maxWidth: .infinity)
+        #endif
         .frame(maxHeight: .infinity, alignment: .top)
         .glassSidebar(accent: accent, colorScheme: colorScheme, material: windowMaterial)
         #if os(macOS)
