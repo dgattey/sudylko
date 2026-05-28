@@ -644,7 +644,10 @@ struct ContentView: View {
     }
 
     private func switchToSave(id: UUID) {
-        if game != nil, activeSaveID == id {
+        // "Already showing this save" must be keyed on the loaded game's identity, not
+        // `activeSaveID`. `selectSave` sets `activeSaveID = id` first and the change routes here,
+        // so `activeSaveID == id` is always true and would wrongly skip loading a different save.
+        if game != nil, lastFocusedSaveIDString == id.uuidString {
             resumeLoadedGameIfNeeded()
             return
         }
