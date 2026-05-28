@@ -7,41 +7,47 @@ import SudylkoShared
 /// The Dock loads this bundle into a long-lived dock-extra XPC process and calls
 /// `setDockTile(_:)` exactly once per plug-in lifetime. Without an extra signal, the
 /// contentView the plug-in installs on that first call is what the Dock keeps showing across
-/// subsequent host launches and quits, even after the host writes new accent values to the
-/// shared suite. We hold the tile reference and re-apply it whenever the host posts
-/// `SudylkoDockNotifications.preferencesDidChange`, so the next quit-state render reflects
-/// whatever the host most recently wrote.
+/// subsequent host launches and quits, even after the appearance changes. We hold the tile
+/// reference and re-apply it on two distributed notifications: the host's
+/// `preferencesDidChange` (accent or appearance write, and terminate) and the OS-wide
+/// `systemAppearanceDidChange`. The second is what keeps the quit-state icon following the
+/// system light/dark setting while the host isn't running.
 @objc(SudylkoDockTilePlugIn)
 public final class SudylkoDockTilePlugIn: NSObject, NSDockTilePlugIn {
     private static var currentDockTile: NSDockTile?
-    private static var observer: NSObjectProtocol?
+    private static var observers: [NSObjectProtocol] = []
 
     public func setDockTile(_ dockTile: NSDockTile?) {
         Self.currentDockTile = dockTile
         if let dockTile {
-            Self.installPreferencesObserverIfNeeded()
+            Self.installObserversIfNeeded()
             DockIconRenderer.applyQuitStateDockTile(dockTile)
         } else {
-            Self.removeObserver()
+            Self.removeObservers()
         }
     }
 
-    private static func installPreferencesObserverIfNeeded() {
-        guard observer == nil else { return }
-        observer = DistributedNotificationCenter.default().addObserver(
-            forName: SudylkoDockNotifications.preferencesDidChange,
-            object: nil,
-            queue: .main
-        ) { _ in
+    private static func installObserversIfNeeded() {
+        guard observers.isEmpty else { return }
+        let center = DistributedNotificationCenter.default()
+        let reapply: (Notification) -> Void = { _ in
             guard let tile = currentDockTile else { return }
             DockIconRenderer.applyQuitStateDockTile(tile)
         }
+        observers = [
+            SudylkoDockNotifications.preferencesDidChange,
+            SudylkoDockNotifications.systemAppearanceDidChange,
+        ].map { name in
+            center.addObserver(forName: name, object: nil, queue: .main, using: reapply)
+        }
     }
 
-    private static func removeObserver() {
-        guard let observer else { return }
-        DistributedNotificationCenter.default().removeObserver(observer)
-        self.observer = nil
+    private static func removeObservers() {
+        let center = DistributedNotificationCenter.default()
+        for observer in observers {
+            center.removeObserver(observer)
+        }
+        observers.removeAll()
     }
 }
 #endif

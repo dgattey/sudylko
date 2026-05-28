@@ -12,6 +12,11 @@ import Foundation
 public enum SudylkoDockNotifications {
     public static let preferencesDidChange = Notification.Name("com.sudylko.dockPreferencesDidChange")
 
+    /// macOS posts this system-wide whenever the user flips light/dark (including the auto
+    /// schedule). The quit-state plug-in observes it so a theme change while the host is quit
+    /// re-renders the dock tile; without it the Dock keeps the appearance from the last render.
+    public static let systemAppearanceDidChange = Notification.Name("AppleInterfaceThemeChangedNotification")
+
     public static func postPreferencesDidChange() {
         DistributedNotificationCenter.default().post(
             name: preferencesDidChange,

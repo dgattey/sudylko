@@ -97,8 +97,9 @@ public enum DockIconRenderer {
         case "light": return .light
         case "dark": return .dark
         default:
-            let appearance = NSApp?.effectiveAppearance ?? NSAppearance.currentDrawing()
-            return appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? .dark : .light
+            // Read the OS setting from the global domain rather than `NSApp.effectiveAppearance`
+            // so the quit-state plug-in resolves the right scheme inside the dock-extra process.
+            return SudylkoPreferenceAccess.systemAppearanceIsDark() ? .dark : .light
         }
     }
 

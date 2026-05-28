@@ -67,6 +67,26 @@ public enum SudylkoPreferenceAccess {
         #endif
     }
 
+    /// OS-wide dark/light, read straight from the global domain.
+    ///
+    /// The dock-extra process that hosts the quit-state plug-in has an `NSApp` whose
+    /// `effectiveAppearance` does not reliably reflect the system at the instant
+    /// `AppleInterfaceThemeChangedNotification` arrives, so the plug-in can't trust it. Reading
+    /// `AppleInterfaceStyle` from the global suite — flushing the cfprefsd cache first, same
+    /// reason as `refreshDockPluginCache` — gives the current value in any process.
+    public static func systemAppearanceIsDark() -> Bool {
+        #if os(macOS)
+        CFPreferencesAppSynchronize(kCFPreferencesAnyApplication)
+        let style = CFPreferencesCopyAppValue(
+            "AppleInterfaceStyle" as CFString,
+            kCFPreferencesAnyApplication
+        ) as? String
+        return style?.caseInsensitiveCompare("dark") == .orderedSame
+        #else
+        return false
+        #endif
+    }
+
     /// Force a flush regardless of the diff. Used at `applicationWillTerminate` so any pending
     /// in-memory writes hit disk before the process exits and the plug-in fires.
     public static func flushForTerminate() {
