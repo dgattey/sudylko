@@ -42,7 +42,7 @@ The script:
 
 1. Runs `swift build -c debug` (binaries under `.build/debug/`).
 2. Assembles `Sudylko.app` in the repo root.
-3. Copies bundled `App/Icon.icns` into the `.app` (regenerate manually with `scripts/generate-app-icon.sh` when needed).
+3. Regenerates `App/Icon.icns` from the debug binary and copies it into the `.app` (generated assets are gitignored; run `scripts/generate-app-icon.sh` alone only when needed).
 4. Quits any running Sudylko and opens a fresh instance with `open -n`.
 
 Use this script as the default verify loop after UI or behavior changes. A bare `open Sudylko.app` without rebuilding can show stale code.
