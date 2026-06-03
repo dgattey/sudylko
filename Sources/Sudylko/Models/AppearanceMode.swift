@@ -40,15 +40,6 @@ enum AppearanceMode: String, CaseIterable, Identifiable {
     }
     #endif
 
-    /// `nil` lets SwiftUI follow the window / system appearance.
-    func preferredColorScheme(system: ColorScheme) -> ColorScheme? {
-        switch self {
-        case .light: .light
-        case .dark: .dark
-        case .system: nil
-        }
-    }
-
     static func systemColorScheme() -> ColorScheme {
         PlatformColor.systemColorScheme()
     }

@@ -1,5 +1,7 @@
 import SwiftUI
 
+// UI typography: semantic `.font(.headline)` etc. → `SudylkoFontScale`; hierarchy guide in that file.
+
 enum ThemeMetrics {
     static let controlCornerRadius: CGFloat = 6
 }

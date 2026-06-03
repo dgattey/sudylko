@@ -6,10 +6,8 @@ struct AppearancePickerView: View {
     @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Appearance")
-                .font(.caption.weight(.medium))
-                .foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: FormLayout.sectionSpacing) {
+            FormSectionLabel(title: "Appearance")
 
             HStack(spacing: 8) {
                 ForEach(AppearanceMode.allCases) { mode in
@@ -42,21 +40,24 @@ private struct AppearanceOptionButton: View {
                     .foregroundStyle(isSelected ? accent.interactiveForeground(for: colorScheme) : .secondary)
                     .frame(width: 36, height: 28)
                 Text(mode.displayName)
-                    .font(.caption2)
-                    .foregroundStyle(.primary)
+                    .font(.caption)
             }
             .frame(maxWidth: .infinity)
             .padding(.vertical, 6)
-            .background {
-                RoundedRectangle(cornerRadius: ThemeMetrics.controlCornerRadius, style: .continuous)
-                    .fill(isSelected ? accent.selectionFill(for: colorScheme) : Color.primary.opacity(0.05))
-            }
+            .inspectorSegmentSelection(
+                isSelected: isSelected,
+                accent: accent,
+                colorScheme: colorScheme,
+                cornerRadius: ThemeMetrics.controlCornerRadius
+            )
             .overlay {
-                RoundedRectangle(cornerRadius: ThemeMetrics.controlCornerRadius, style: .continuous)
-                    .strokeBorder(
-                        isSelected ? accent.selectionBorder(for: colorScheme) : Color.primary.opacity(0.1),
-                        lineWidth: isSelected && accent.prefersStrongSelectionBorder ? 1.5 : 1
-                    )
+                if !isSelected {
+                    RoundedRectangle(cornerRadius: ThemeMetrics.controlCornerRadius, style: .continuous)
+                        .strokeBorder(
+                            Color.primary.opacity(InspectorSurface.borderOpacity(for: colorScheme)),
+                            lineWidth: 1
+                        )
+                }
             }
         }
         .buttonStyle(.plain)

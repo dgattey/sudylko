@@ -96,6 +96,18 @@ struct BoardView: View {
                     colorScheme: colorScheme
                 )
             }
+            ForEach(Array(game.pulseDigits).sorted(), id: \.self) { digit in
+                ForEach(game.solutionIndices(for: digit), id: \.self) { index in
+                    UnitCompletionPulseBand(
+                        x: CGFloat(index.col) * cellSize,
+                        y: CGFloat(index.row) * cellSize,
+                        width: cellSize,
+                        height: cellSize,
+                        accent: accent,
+                        colorScheme: colorScheme
+                    )
+                }
+            }
         }
         .allowsHitTesting(false)
     }

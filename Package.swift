@@ -21,6 +21,11 @@ let package = Package(
             dependencies: ["SudylkoShared"],
             path: "Sources/Sudylko"
         ),
+        .testTarget(
+            name: "SudylkoLogicTests",
+            dependencies: ["Sudylko"],
+            path: "Tests/SudylkoLogicTests"
+        ),
         .target(
             name: "SudylkoDockTilePlugin",
             dependencies: ["SudylkoShared"],

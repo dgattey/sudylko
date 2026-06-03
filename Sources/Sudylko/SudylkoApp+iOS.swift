@@ -19,11 +19,14 @@ struct SudylkoApp: App {
             CommandMenu("Debug") {
                 Button("Seed done game") {
                     Task { @MainActor in
-                        _ = GameSaveStore.debugSeedCompletedGame()
+                        _ = SaveLoadWork.debugSeedCompletedGame()
                     }
                 }
                 Button("Delete all saves…") {
-                    GameSaveStore.deleteAll()
+                    NotificationCenter.default.post(
+                        name: .requestDeleteAllSavesConfirmation,
+                        object: nil
+                    )
                 }
             }
         }

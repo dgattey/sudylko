@@ -7,7 +7,7 @@ struct SidebarArchiveButton: View {
     var body: some View {
         Button(action: action) {
             Image(systemName: "archivebox")
-                .font(.system(size: 12, weight: .medium))
+                .font(.footnote)
                 .foregroundStyle(.secondary)
                 .frame(width: 22, height: 22)
                 .contentShape(Rectangle())

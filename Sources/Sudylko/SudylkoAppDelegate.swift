@@ -39,18 +39,27 @@ final class SudylkoAppDelegate: NSObject, NSApplicationDelegate {
         DispatchQueue.main.async {
             EditMenuCleaner.prune()
             HelpMenuShortcutController.installHelpMenuKeyEquivalent()
+            #if DEBUG
+            DebugMenuController.install()
+            #endif
         }
     }
 
     func applicationDidBecomeActive(_ notification: Notification) {
         EditMenuCleaner.prune()
         HelpMenuShortcutController.installHelpMenuKeyEquivalent()
+        #if DEBUG
+        DebugMenuController.install()
+        #endif
     }
 
     func applicationWillUpdate(_ notification: Notification) {
         DispatchQueue.main.async {
             EditMenuCleaner.prune()
             HelpMenuShortcutController.installHelpMenuKeyEquivalent()
+            #if DEBUG
+            DebugMenuController.install()
+            #endif
         }
     }
 

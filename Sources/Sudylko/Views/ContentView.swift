@@ -10,7 +10,7 @@ struct ContentView: View {
 #endif
     @EnvironmentObject private var appAccent: AppAccentModel
     @AppStorage("appearanceMode") private var appearanceRaw = AppearanceMode.system.rawValue
-    @AppStorage("digitFontStyle") private var fontStyleRaw = DigitFontStyle.rounded.rawValue
+    @AppStorage("puzzleFontStyle") private var fontStyleRaw = PuzzleFontStyle.rounded.rawValue
     @AppStorage("lastDifficulty") private var lastDifficultyRaw = GameDifficulty.medium.rawValue
     @AppStorage("lastFocusedSaveID") private var lastFocusedSaveIDString = ""
     @AppStorage("revealMistakesImmediately") private var revealMistakesImmediately = false
@@ -28,28 +28,35 @@ struct ContentView: View {
     @State private var showKeyboardShortcuts = false
     @State private var showGameArchiveConfirmation = false
     @State private var showGameRestartConfirmation = false
+    @State private var savePendingArchive: SaveSlotSummary?
+    @State private var pendingProgressReset: ProgressResetKind?
+    #if DEBUG
+    @State private var showDeleteAllSavesConfirmation = false
+    #endif
     #if os(iOS)
     @State private var showSavesSheet = false
     #else
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
     #endif
-    @State private var homeProgressInspectorPresented = false
-    @State private var homeInspectorSection: HomeProgressSection?
     @StateObject private var puzzleTimer = PuzzleTimer()
+    @StateObject private var customPuzzlePrep = CustomPuzzlePrepModel()
+    @State private var randomPuzzlePrep = RandomPuzzlePrepCache()
     /// Tracks macOS system appearance when `appearanceMode == .system` (updated via distributed notification).
     @State private var systemColorScheme = AppearanceMode.systemColorScheme()
     @State private var saveSlots: [SaveSlotSummary] = []
-    /// Bumped whenever saves reload so the sidebar list re-renders after menu-driven seeds.
-    @State private var saveSlotsRevision = 0
-    @State private var saveTask: Task<Void, Never>?
+    /// Avoids re-reading the active save from disk when persisting on switch.
+    @State private var activeSaveMetadata: SavePersistMetadata?
     @State private var celebrationQueue: [AchievementID] = []
     @State private var activeCelebration: AchievementID?
+    @State private var loadingMessage: String?
+    @State private var isPuzzleEndBannerVisible = false
+    @State private var saveLoadTask: Task<Void, Never>?
     private var appearanceMode: AppearanceMode {
         AppearanceMode(rawValue: appearanceRaw) ?? .system
     }
 
-    private var digitFont: DigitFontStyle {
-        DigitFontStyle(rawValue: fontStyleRaw) ?? .rounded
+    private var puzzleFont: PuzzleFontStyle {
+        PuzzleFontStyle(rawValue: fontStyleRaw) ?? .rounded
     }
 
     private var resolvedColorScheme: ColorScheme {
@@ -60,6 +67,15 @@ struct ContentView: View {
         game != nil && activeSaveID != nil
     }
 
+    /// Save the live timer reflects; nil while switching or before restore finishes.
+    private var liveTimerSaveID: UUID? {
+        guard isInGame,
+              let id = activeSaveID,
+              lastFocusedSaveIDString == id.uuidString
+        else { return nil }
+        return id
+    }
+
     #if os(macOS)
     private var showsSidebar: Bool {
         columnVisibility != .detailOnly
@@ -68,17 +84,13 @@ struct ContentView: View {
     private var macWindowMinimumSize: CGSize {
         WindowLayoutMetrics.minimumSize(
             showsSidebar: showsSidebar,
-            showsHomeInspector: !isInGame && homeProgressInspectorPresented
+            showsHomeInspector: false
         )
     }
     #endif
 
     private var lastFocusedDifficulty: GameDifficulty {
-        if let id = UUID(uuidString: lastFocusedSaveIDString),
-           let state = GameSaveStore.load(id: id) {
-            return state.difficulty
-        }
-        return GameDifficulty(rawValue: lastDifficultyRaw) ?? .medium
+        GameDifficulty(rawValue: lastDifficultyRaw) ?? .medium
     }
 
     var body: some View {
@@ -113,10 +125,6 @@ struct ContentView: View {
 
     private var appChromeWithSheets: some View {
         rootChrome { platformRootCore }
-            .overlay { gameOverlays }
-            .animation(.spring(response: 0.45, dampingFraction: 0.82), value: game?.isPuzzleEnded == true)
-            .sheet(isPresented: $showSeedSheet) { seedSheet }
-            .sheet(isPresented: $showKeyboardShortcuts) { keyboardShortcutsSheet }
             #if os(iOS)
             .sheet(isPresented: $showSavesSheet) { savesSheet }
             #endif
@@ -169,10 +177,11 @@ struct ContentView: View {
             .hiddenWindowToolbar()
             .appBackground()
             .environment(\.colorScheme, resolvedColorScheme)
-            .environment(\.digitFontStyle, digitFont)
+            .environment(\.puzzleFontStyle, puzzleFont)
+            .sudylkoAppTypography()
             .environment(\.isAppActive, isAppActive)
             .environment(\.isWindowFullscreen, isWindowFullscreen)
-            .preferredColorScheme(appearanceMode.preferredColorScheme(system: systemColorScheme))
+            .preferredColorScheme(resolvedColorScheme)
         #if os(macOS)
             .background(WindowConfigurator(
                 appearanceMode: appearanceMode,
@@ -195,23 +204,25 @@ struct ContentView: View {
         #endif
             .onChange(of: appearanceRaw) { _, _ in refreshAppearanceFromSettings() }
             .onChange(of: isAppActive) { _, active in handleAppActiveChange(active) }
-            .onChange(of: showSettings) { _, _ in updateAutoPauseForInterrupts() }
-            .onChange(of: isWindowMiniaturized) { _, _ in updateAutoPauseForInterrupts() }
+            .onChange(of: showSettings) { _, _ in
+                scheduleAutoPauseInterruptUpdate()
+            }
+            .onChange(of: isWindowMiniaturized) { _, _ in
+                scheduleAutoPauseInterruptUpdate()
+            }
             .onChange(of: activeSaveID) { oldID, newID in
                 handleActiveSaveIDChange(from: oldID, to: newID)
                 updateDockIcon()
             }
             .onChange(of: isInGame) { _, inGame in
                 if inGame {
-                    homeProgressInspectorPresented = false
-                    homeInspectorSection = nil
                     #if os(iOS)
                     showSavesSheet = false
                     #endif
                 }
             }
             .onChange(of: puzzleTimer.isPaused) { _, _ in
-                persistCurrentGame()
+                persistGameplaySession()
                 updateDockIcon()
             }
             .onChange(of: puzzleTimer.formattedElapsed) { _, _ in
@@ -230,6 +241,9 @@ struct ContentView: View {
                 showKeyboardShortcuts = true
             }
         #if DEBUG
+            .onReceive(NotificationCenter.default.publisher(for: .requestDeleteAllSavesConfirmation)) { _ in
+                showDeleteAllSavesConfirmation = true
+            }
             .onReceive(NotificationCenter.default.publisher(for: .debugAchievementUnlocked)) { notification in
                 guard let id = notification.object as? AchievementID else { return }
                 enqueueCelebrations([id])
@@ -245,6 +259,8 @@ struct ContentView: View {
                     game?.debugTriggerFinishedColumnPulse()
                 case .finishedBox:
                     game?.debugTriggerFinishedBoxPulse()
+                case .finishedDigit:
+                    game?.debugTriggerFinishedDigitPulse()
                 }
             }
         #endif
@@ -264,7 +280,6 @@ struct ContentView: View {
             .onChange(of: game?.canUndo) { _, _ in appCommands.sync(with: game) }
             .onChange(of: game?.canRedo) { _, _ in appCommands.sync(with: game) }
             .onChange(of: game?.canDelete) { _, _ in appCommands.sync(with: game) }
-            .onChange(of: game?.saveRevision) { _, _ in appCommands.sync(with: game) }
     }
 
     private var appChromeWithLifecycle: some View {
@@ -274,11 +289,20 @@ struct ContentView: View {
                 appAccent.refresh()
                 performInitialSetup()
             }
-            .onChange(of: game?.isComplete) { old, new in
-                handleGameCompletionChange(old, isComplete: new)
+            .onChange(of: game?.outcome) { old, new in
+                handleOutcomeChange(from: old, to: new)
+                if new == .won || new == .lost {
+                    isPuzzleEndBannerVisible = true
+                } else if new == .playing {
+                    isPuzzleEndBannerVisible = false
+                }
             }
-            .onChange(of: game?.isLost, handleGameLossChange)
-            .onChange(of: game?.saveRevision) { _, _ in schedulePersist() }
+            .onChange(of: game?.puzzleRevision) { _, _ in
+                persistPuzzleProgress()
+            }
+            .onChange(of: game?.sessionRevision) { _, _ in
+                persistSessionState()
+            }
             #if os(macOS)
             .onChange(of: appAccent.accent) { _, _ in
                 DockIconRenderer.invalidateCache()
@@ -297,45 +321,184 @@ struct ContentView: View {
             }
     }
 
-    @ViewBuilder
-    private var gameOverlays: some View {
-        if let celebration = activeCelebration {
-            AchievementCelebrationView(achievement: celebration) {
-                activeCelebration = nil
-                presentNextCelebration()
-            }
-            .transition(.scale(scale: 0.9).combined(with: .opacity))
-            .zIndex(2)
+    /// Loading blocks win/loss; end banner is optional until dismissed (sidebar stays usable).
+    private var gameOverlayPhase: GameOverlayPhase? {
+        if let loadingMessage {
+            return .loading(loadingMessage)
         }
-
-        if game?.isComplete == true {
-            completionBanner
-                .transition(.scale.combined(with: .opacity))
-                .zIndex(1)
+        guard isPuzzleEndBannerVisible else { return nil }
+        switch game?.outcome {
+        case .won:
+            return .puzzleEnd(PuzzleEndBannerView.Kind.won)
+        case .lost:
+            return .puzzleEnd(PuzzleEndBannerView.Kind.lost)
+        default:
+            return nil
         }
+    }
 
-        if game?.isLost == true {
-            lossBanner
-                .transition(.scale.combined(with: .opacity))
-                .zIndex(1)
+    private func dismissPuzzleEndBanner() {
+        withAnimation(.easeOut(duration: 0.2)) {
+            isPuzzleEndBannerVisible = false
         }
     }
 
     private var seedSheet: some View {
         CustomPuzzleSheet(
+            prep: customPuzzlePrep,
             seedInput: $seedInput,
             difficulty: $seedSheetDifficulty,
-            canStart: canStartFromSeedInput,
             onCancel: { showSeedSheet = false },
-            onStart: {
-                let trimmed = seedInput.trimmingCharacters(in: .whitespacesAndNewlines)
-                if let seed = PuzzleSeed.parse(trimmed, difficulty: seedSheetDifficulty) {
-                    startFromSeed(seed)
-                    showSeedSheet = false
+            onStart: startFromPreparedCustomPuzzle
+        )
+        .onDisappear { customPuzzlePrep.reset() }
+    }
+
+    private func startFromPreparedCustomPuzzle() {
+        guard let seed = customPuzzlePrep.readySeed,
+              let template = customPuzzlePrep.readyTemplate else { return }
+        showSeedSheet = false
+        pauseAndPersistOutgoingGame()
+        lastDifficultyRaw = seed.difficulty.rawValue
+        beginNewGame(
+            puzzleSeed: seed,
+            startedFromCustomSeed: true,
+            preparedTemplate: template
+        )
+    }
+
+    @ViewBuilder
+    private var gameArchiveModal: some View {
+        if let game, let saveID = activeSaveID {
+            ArchiveSaveModal(
+                gameTitle: "Game \(game.puzzleSeed.gameNumberLabel)",
+                onCancel: { showGameArchiveConfirmation = false },
+                onArchive: {
+                    showGameArchiveConfirmation = false
+                    archiveSave(id: saveID)
                 }
+            )
+        }
+    }
+
+    @ViewBuilder
+    private var gameRestartModal: some View {
+        if let game {
+            RestartPuzzleModal(
+                onCancel: { showGameRestartConfirmation = false },
+                onRestart: {
+                    showGameRestartConfirmation = false
+                    restartCurrentPuzzle(game: game)
+                }
+            )
+        }
+    }
+
+    @ViewBuilder
+    private var detailModalOverlay: some View {
+        if let slot = savePendingArchive {
+            SudylkoDetailModalOverlay(onDismiss: { savePendingArchive = nil }) {
+                ArchiveSaveModal(
+                    gameTitle: slot.gameTitle,
+                    onCancel: { savePendingArchive = nil },
+                    onArchive: {
+                        savePendingArchive = nil
+                        archiveSave(id: slot.id)
+                    }
+                )
+            }
+        } else if let kind = pendingProgressReset {
+            SudylkoDetailModalOverlay(onDismiss: { pendingProgressReset = nil }) {
+                ProgressResetModal(
+                    kind: kind,
+                    onCancel: { pendingProgressReset = nil },
+                    onConfirm: {
+                        ProgressResetKind.perform(kind)
+                        pendingProgressReset = nil
+                    }
+                )
+            }
+        } else if showGameArchiveConfirmation {
+            SudylkoDetailModalOverlay(onDismiss: { showGameArchiveConfirmation = false }) {
+                gameArchiveModal
+            }
+        } else if showGameRestartConfirmation {
+            SudylkoDetailModalOverlay(onDismiss: { showGameRestartConfirmation = false }) {
+                gameRestartModal
+            }
+        } else if showSeedSheet {
+            SudylkoDetailModalOverlay(onDismiss: { showSeedSheet = false }) {
+                seedSheet
+            }
+        } else if showKeyboardShortcuts {
+            SudylkoDetailModalOverlay(onDismiss: { showKeyboardShortcuts = false }) {
+                keyboardShortcutsSheet
+            }
+        } else if showsDeleteAllSavesModal {
+            SudylkoDetailModalOverlay(onDismiss: { showDeleteAllSavesConfirmation = false }) {
+                deleteAllSavesModal
+            }
+        }
+    }
+
+    private var showsDeleteAllSavesModal: Bool {
+        #if DEBUG
+        showDeleteAllSavesConfirmation
+        #else
+        false
+        #endif
+    }
+
+    private var hasDetailModalPresented: Bool {
+        savePendingArchive != nil
+            || pendingProgressReset != nil
+            || showGameArchiveConfirmation
+            || showGameRestartConfirmation
+            || showSeedSheet
+            || showKeyboardShortcuts
+            || showsDeleteAllSavesModal
+    }
+
+    @discardableResult
+    private func dismissDetailModalsIfNeeded() -> Bool {
+        guard hasDetailModalPresented else { return false }
+        dismissDetailModals()
+        return true
+    }
+
+    private func dismissDetailModals() {
+        savePendingArchive = nil
+        pendingProgressReset = nil
+        showGameArchiveConfirmation = false
+        showGameRestartConfirmation = false
+        showSeedSheet = false
+        showKeyboardShortcuts = false
+        #if DEBUG
+        showDeleteAllSavesConfirmation = false
+        #endif
+    }
+
+    /// Escape while playing: dismiss modal or settings before leaving the puzzle.
+    private func handleGameEscape() -> Bool {
+        if dismissDetailModalsIfNeeded() { return true }
+        if showSettings {
+            showSettings = false
+            return true
+        }
+        return false
+    }
+
+    #if DEBUG
+    private var deleteAllSavesModal: some View {
+        DeleteAllSavesModal(
+            onCancel: { showDeleteAllSavesConfirmation = false },
+            onDelete: {
+                showDeleteAllSavesConfirmation = false
+                SaveLoadWork.deleteAll()
             }
         )
     }
+    #endif
 
     private func handleSavesDidChange(_ notification: Notification) {
         if notification.object as? SavesChangeReason == .deleteAll {
@@ -344,37 +507,37 @@ struct ContentView: View {
                 goHome()
             }
         }
-        refreshSaveSlots()
+        refreshSaveSlotsInBackground()
     }
 
     private func handleSystemThemeDidChange() {
-        systemColorScheme = AppearanceMode.systemColorScheme()
-        appAccent.systemColorScheme = systemColorScheme
-        if appearanceMode == .system {
-            refreshAppearanceFromSettings()
-        }
+        guard appearanceMode == .system else { return }
+        refreshAppearanceFromSettings()
     }
 
-    private func handleGameCompletionChange(_ old: Bool?, isComplete new: Bool?) {
-        guard new == true, old != true else { return }
-        puzzleTimer.finish()
-        persistCurrentGame()
-        guard shouldRecordCompletionStats() else { return }
-        evaluateAchievementsAfterCompletion()
+    /// Timer, stats, and sidebar when `outcome` becomes `.won` or `.lost`. Board already saved via `puzzleRevision`.
+    private func handleOutcomeChange(from old: PuzzleOutcome?, to new: PuzzleOutcome?) {
+        guard let new, old != new else { return }
+        switch new {
+        case .playing:
+            break
+        case .won:
+            puzzleTimer.finish()
+            refreshSaveSlotsInBackground()
+            guard shouldRecordCompletionStats() else { return }
+            evaluateAchievementsAfterCompletion()
+        case .lost:
+            puzzleTimer.finish()
+            if let game {
+                AchievementStore.recordImpossibleLoss(difficulty: game.difficulty)
+            }
+            refreshSaveSlotsInBackground()
+        }
     }
 
     /// True only on the first stats/achievement pass for this save's win (not restore/revisit).
     private func shouldRecordCompletionStats() -> Bool {
-        guard let saveID = activeSaveID,
-              let save = GameSaveStore.load(id: saveID) else { return true }
-        return !save.statsCompletionRecorded
-    }
-
-    private func handleGameLossChange(_: Bool?, isLost: Bool?) {
-        guard isLost == true, let game else { return }
-        puzzleTimer.finish()
-        AchievementStore.recordImpossibleLoss(difficulty: game.difficulty)
-        persistCurrentGame()
+        !(activeSaveMetadata?.statsCompletionRecorded ?? false)
     }
 
     private func applyGameplaySettingsToActiveGame() {
@@ -386,17 +549,20 @@ struct ContentView: View {
     private var sidebar: some View {
         AppSidebar(
             activeSaveID: $activeSaveID,
+            liveTimerSaveID: liveTimerSaveID,
             isInGame: isInGame,
             saveSlots: saveSlots,
-            saveSlotsRevision: saveSlotsRevision,
             liveTimer: puzzleTimer,
             onNewGame: handleNewGameFromSidebar,
             onSelectSave: selectSaveFromSidebar,
-            onArchiveSave: archiveSave
+            onArchiveSave: archiveSave,
+            savePendingArchive: $savePendingArchive,
+            pendingProgressReset: $pendingProgressReset
         )
     }
 
     private func selectSaveFromSidebar(id: UUID) {
+        dismissDetailModals()
         selectSave(id: id)
         #if os(iOS)
         showSavesSheet = false
@@ -404,6 +570,7 @@ struct ContentView: View {
     }
 
     private func handleNewGameFromSidebar() {
+        dismissDetailModals()
         #if os(iOS)
         showSavesSheet = false
         #endif
@@ -422,6 +589,27 @@ struct ContentView: View {
             }
         }
         .animation(detailNavigationAnimation, value: isInGame)
+        .overlay {
+            GameOverlayHost(
+                phase: gameOverlayPhase,
+                achievement: activeCelebration,
+                formattedElapsed: puzzleTimer.formattedElapsed,
+                buttonTint: appAccent.prominentTint,
+                colorScheme: resolvedColorScheme,
+                onDismissAchievement: {
+                    activeCelebration = nil
+                    presentNextCelebration()
+                },
+                onDismissPuzzleEnd: dismissPuzzleEndBanner,
+                onEndGameAction: {
+                    dismissPuzzleEndBanner()
+                    goHome()
+                }
+            )
+        }
+        .overlay {
+            detailModalOverlay
+        }
         .toolbar { detailToolbar }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .hiddenWindowToolbar()
@@ -436,21 +624,27 @@ struct ContentView: View {
         if isInGame, let game, activeSaveID != nil {
             ToolbarItem(placement: .navigation) {
                 Button("Back", systemImage: "chevron.left", action: goHome)
+                    .font(.body)
                     .help("Back to home and save this game")
             }
             ToolbarItem(placement: .principal) {
                 GameTimerBar(
                     timer: puzzleTimer,
                     isPuzzleEnded: game.isPuzzleEnded,
-                    endedLabel: game.isComplete ? "Done" : (game.isLost ? "Lost" : nil),
-                    endedLabelColor: game.isComplete ? .green : .red
+                    endedLabel: endedLabel(for: game.outcome),
+                    endedLabelColor: endedLabelColor(for: game.outcome)
                 )
                 .fixedSize()
             }
             ToolbarItemGroup(placement: .primaryAction) {
                 Button("Archive", systemImage: "archivebox", role: .destructive) {
-                    showGameArchiveConfirmation = true
+                    if game.outcome.requiresArchiveConfirmation {
+                        showGameArchiveConfirmation = true
+                    } else if let saveID = activeSaveID {
+                        archiveSave(id: saveID)
+                    }
                 }
+                .font(.body)
                 .help("Archive this saved game")
                 Button("Restart", systemImage: "arrow.counterclockwise") {
                     if game.hasPlayerEntries {
@@ -459,6 +653,7 @@ struct ContentView: View {
                         restartCurrentPuzzle(game: game)
                     }
                 }
+                .font(.body)
                 .help("Restart this puzzle from the beginning")
                 settingsToolbarButton
             }
@@ -485,16 +680,9 @@ struct ContentView: View {
         GamePlayView(
             game: game,
             timer: puzzleTimer,
-            onRestart: {
-                restartCurrentPuzzle(game: game)
-            },
-            onArchive: {
-                archiveSave(id: saveID)
-            },
             onGoHome: goHome,
-            showSettings: $showSettings,
-            showArchiveConfirmation: $showGameArchiveConfirmation,
-            showRestartConfirmation: $showGameRestartConfirmation
+            onEscape: handleGameEscape,
+            showSettings: $showSettings
         )
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
@@ -505,22 +693,23 @@ struct ContentView: View {
             onMedium: { startNewGame(difficulty: .medium) },
             onHard: { startNewGame(difficulty: .hard) },
             onFromSeed: {
-                seedInput = ""
                 seedSheetDifficulty = lastFocusedDifficulty
+                if let prefill = PuzzleSeed.prefillFromClipboard(defaultDifficulty: lastFocusedDifficulty) {
+                    seedInput = prefill.text
+                    seedSheetDifficulty = prefill.difficulty
+                } else {
+                    seedInput = ""
+                }
                 showSeedSheet = true
             },
-            inspectorPresented: $homeProgressInspectorPresented,
-            inspectorSection: $homeInspectorSection
         )
-        .modifier(HomeProgressPresentationModifier(
-            isPresented: $homeProgressInspectorPresented,
-            section: homeInspectorSection
-        ))
         .navigationTitle("")
         .hiddenWindowToolbar()
         #if os(macOS)
         .background {
-            EscapeKeyboardHost(onEscape: dismissSettingsIfNeeded)
+            if !isInGame {
+                EscapeKeyboardHost(onEscape: handleHomeEscape)
+            }
         }
         #endif
     }
@@ -539,10 +728,13 @@ struct ContentView: View {
         showSettings.toggle()
     }
 
-    private func dismissSettingsIfNeeded() -> Bool {
-        guard showSettings else { return false }
-        showSettings = false
-        return true
+    private func handleHomeEscape() -> Bool {
+        if dismissDetailModalsIfNeeded() { return true }
+        if showSettings {
+            showSettings = false
+            return true
+        }
+        return false
     }
 
     private func handleNewGameButton() {
@@ -556,6 +748,7 @@ struct ContentView: View {
     private func assignGame(_ newGame: GameViewModel?) {
         game = newGame
         appCommands.sync(with: newGame)
+        isPuzzleEndBannerVisible = newGame?.outcome.isEnded ?? false
     }
 
     private func goHome() {
@@ -571,6 +764,7 @@ struct ContentView: View {
     private func clearActiveGameState() {
         assignGame(nil)
         activeSaveID = nil
+        activeSaveMetadata = nil
         puzzleTimer.reset()
         updateDockIcon()
     }
@@ -579,9 +773,12 @@ struct ContentView: View {
         Button("Settings", systemImage: "gearshape") {
             showSettings = true
         }
+        .font(.body)
         .help("Open appearance and puzzle settings")
         .popover(isPresented: $showSettings, arrowEdge: .bottom) {
             SettingsPopoverView()
+                .environment(\.colorScheme, resolvedColorScheme)
+                .preferredColorScheme(resolvedColorScheme)
         }
     }
 
@@ -589,19 +786,70 @@ struct ContentView: View {
         pauseAndPersistOutgoingGame()
         lastDifficultyRaw = difficulty.rawValue
         seedSheetDifficulty = difficulty
-        beginNewGame(
-            puzzleSeed: PuzzleSeed.random(difficulty: difficulty),
-            startedFromCustomSeed: false
-        )
+
+        if let prepared = randomPuzzlePrep.consume(difficulty: difficulty) {
+            beginNewGame(
+                puzzleSeed: prepared.puzzleSeed,
+                startedFromCustomSeed: false,
+                preparedTemplate: prepared.template
+            )
+        } else {
+            beginNewGame(
+                puzzleSeed: PuzzleSeed.random(difficulty: difficulty),
+                startedFromCustomSeed: false
+            )
+        }
     }
 
-    private func startFromSeed(_ puzzleSeed: PuzzleSeed) {
-        pauseAndPersistOutgoingGame()
-        lastDifficultyRaw = puzzleSeed.difficulty.rawValue
-        beginNewGame(puzzleSeed: puzzleSeed, startedFromCustomSeed: true)
+    private func beginNewGame(
+        puzzleSeed: PuzzleSeed,
+        startedFromCustomSeed: Bool,
+        preparedTemplate: GeneratedPuzzle? = nil
+    ) {
+        saveLoadTask?.cancel()
+        saveLoadTask = Task {
+            await beginNewGameAsync(
+                puzzleSeed: puzzleSeed,
+                startedFromCustomSeed: startedFromCustomSeed,
+                preparedTemplate: preparedTemplate
+            )
+        }
     }
 
-    private func beginNewGame(puzzleSeed: PuzzleSeed, startedFromCustomSeed: Bool) {
+    @MainActor
+    private func beginNewGameAsync(
+        puzzleSeed: PuzzleSeed,
+        startedFromCustomSeed: Bool,
+        preparedTemplate: GeneratedPuzzle? = nil
+    ) async {
+        let needsGeneration = preparedTemplate == nil
+        if needsGeneration {
+            loadingMessage = "Generating puzzle…"
+        }
+        defer {
+            if needsGeneration {
+                loadingMessage = nil
+            }
+        }
+
+        let payload: SaveLoadWork.NewGamePayload
+        if let preparedTemplate {
+            payload = SaveLoadWork.NewGamePayload(
+                template: preparedTemplate,
+                puzzleSeed: puzzleSeed,
+                startedFromCustomSeed: startedFromCustomSeed
+            )
+        } else {
+            payload = await Task.detached(priority: .userInitiated) {
+                SaveLoadWork.newGamePayload(
+                    puzzleSeed: puzzleSeed,
+                    startedFromCustomSeed: startedFromCustomSeed
+                )
+            }.value
+        }
+
+        guard !Task.isCancelled else { return }
+
         if let started = AchievementStore.recordGameStarted(
             difficulty: puzzleSeed.difficulty,
             fromCustomSeed: startedFromCustomSeed
@@ -610,24 +858,36 @@ struct ContentView: View {
         }
 
         let saveID = UUID()
-        let newGame = makeGame(puzzleSeed: puzzleSeed, startedFromCustomSeed: startedFromCustomSeed)
+        let newGame = GameViewModel(
+            puzzleSeed: payload.puzzleSeed,
+            startedFromCustomSeed: payload.startedFromCustomSeed,
+            template: payload.template
+        )
 
+        let metadata = SavePersistMetadata(
+            createdAt: Date(),
+            isArchived: false,
+            statsCompletionRecorded: false
+        )
         let state = SavedGameState.from(
             id: saveID,
             game: newGame,
             timer: puzzleTimer,
-            createdAt: Date()
+            metadata: metadata
         )
-        GameSaveStore.save(state)
-        refreshSaveSlots()
+        activeSaveMetadata = metadata
+        SaveLoadWork.enqueueSave(state)
+        refreshSaveSlotsInBackground()
 
         lastFocusedSaveIDString = saveID.uuidString
         withAnimation(detailNavigationAnimation) {
             assignGame(newGame)
             activeSaveID = saveID
         }
+        applyGameplaySettingsToActiveGame()
         puzzleTimer.start()
         updateDockIcon()
+        randomPuzzlePrep.schedulePrepForAllDifficulties()
     }
 
     /// Sidebar row selection — routes through `activeSaveID` so loading uses one code path.
@@ -644,17 +904,36 @@ struct ContentView: View {
     }
 
     private func switchToSave(id: UUID) {
-        // "Already showing this save" must be keyed on the loaded game's identity, not
-        // `activeSaveID`. `selectSave` sets `activeSaveID = id` first and the change routes here,
-        // so `activeSaveID == id` is always true and would wrongly skip loading a different save.
+        saveLoadTask?.cancel()
+        saveLoadTask = Task {
+            await performSaveSwitch(to: id)
+        }
+    }
+
+    @MainActor
+    private func performSaveSwitch(to id: UUID) async {
         if game != nil, lastFocusedSaveIDString == id.uuidString {
             resumeLoadedGameIfNeeded()
             return
         }
 
-        pauseAndPersistOutgoingGame(excluding: id)
+        loadingMessage = "Loading game…"
+        defer { loadingMessage = nil }
 
-        guard var state = GameSaveStore.load(id: id) else {
+        let outgoing = captureOutgoingSave(excluding: id)
+
+        async let incoming = Task.detached(priority: .userInitiated) {
+            SaveLoadWork.restorePayload(saveID: id)
+        }
+        if let outgoing {
+            SaveLoadWork.enqueueSave(outgoing)
+        }
+
+        let payload = await incoming.value
+
+        guard !Task.isCancelled else { return }
+
+        guard let payload else {
             if let previous = UUID(uuidString: lastFocusedSaveIDString) {
                 activeSaveID = previous
             } else {
@@ -663,16 +942,23 @@ struct ContentView: View {
             return
         }
 
-        lastFocusedSaveIDString = id.uuidString
+        var state = payload.state
         lastDifficultyRaw = state.difficulty.rawValue
 
-        if state.isComplete, !state.statsCompletionRecorded {
+        if state.outcome == .won, !state.statsCompletionRecorded {
+            let unlocked = AchievementStore.recordCompletion(
+                AchievementCompletionContext(save: state),
+                save: state
+            )
+            enqueueCelebrations(unlocked)
             state.statsCompletionRecorded = true
-            GameSaveStore.save(state)
+            SaveLoadWork.enqueueSave(state)
         }
 
-        let restored = GameViewModel.restored(from: state)
+        let restored = GameViewModel.restored(from: state, template: payload.template)
         puzzleTimer.restore(from: state)
+        activeSaveMetadata = SavePersistMetadata(state: state)
+        lastFocusedSaveIDString = id.uuidString
         withAnimation(detailNavigationAnimation) {
             assignGame(restored)
             activeSaveID = id
@@ -680,6 +966,8 @@ struct ContentView: View {
         applyGameplaySettingsToActiveGame()
         resumeLoadedGameIfNeeded()
         updateDockIcon()
+
+        refreshSaveSlotsInBackground()
     }
 
     private func resumeLoadedGameIfNeeded() {
@@ -690,45 +978,33 @@ struct ContentView: View {
         }
     }
 
-    private func pauseAndPersistOutgoingGame(excluding excludedID: UUID? = nil) {
+    /// Snapshots the in-memory game for disk without blocking on unrelated saves.
+    private func captureOutgoingSave(excluding excludedID: UUID? = nil) -> SavedGameState? {
         guard let outgoingID = activeSaveID,
               outgoingID != excludedID,
               let game,
-              isInGame else { return }
+              isInGame else { return nil }
         if puzzleTimer.isRunning, !puzzleTimer.isPaused, !game.isPuzzleEnded {
             puzzleTimer.pause()
         }
-        guard let createdAt = GameSaveStore.load(id: outgoingID)?.createdAt else { return }
-        let state = SavedGameState.from(
+        guard let metadata = activeSaveMetadata else { return nil }
+        return SavedGameState.from(
             id: outgoingID,
             game: game,
             timer: puzzleTimer,
-            createdAt: createdAt
+            metadata: metadata
         )
-        GameSaveStore.save(state)
-        refreshSaveSlots()
+    }
+
+    private func pauseAndPersistOutgoingGame(excluding excludedID: UUID? = nil) {
+        guard let state = captureOutgoingSave(excluding: excludedID) else { return }
+        SaveLoadWork.enqueueSave(state)
+        refreshSaveSlotsInBackground()
     }
 
     private func persistOutgoingGameIfNeeded(excluding excludedID: UUID? = nil) {
-        guard let outgoingID = activeSaveID,
-              outgoingID != excludedID,
-              let game,
-              isInGame,
-              let createdAt = GameSaveStore.load(id: outgoingID)?.createdAt else { return }
-        let state = SavedGameState.from(
-            id: outgoingID,
-            game: game,
-            timer: puzzleTimer,
-            createdAt: createdAt
-        )
-        GameSaveStore.save(state)
-    }
-
-    private func makeGame(puzzleSeed: PuzzleSeed, startedFromCustomSeed: Bool) -> GameViewModel {
-        let vm = GameViewModel(puzzleSeed: puzzleSeed, startedFromCustomSeed: startedFromCustomSeed)
-        vm.revealMistakesImmediately = revealMistakesImmediately
-        vm.impossibleMode = impossibleMode
-        return vm
+        guard let state = captureOutgoingSave(excluding: excludedID) else { return }
+        SaveLoadWork.enqueueSave(state)
     }
 
     private func performInitialSetup() {
@@ -736,17 +1012,19 @@ struct ContentView: View {
         #if os(macOS)
         columnVisibility = .all
         #endif
-        if let id = UUID(uuidString: lastFocusedSaveIDString),
-           GameSaveStore.load(id: id) == nil {
-            lastFocusedSaveIDString = ""
-        }
-        systemColorScheme = AppearanceMode.systemColorScheme()
+        syncSystemColorSchemeFromPlatform()
         appAccent.systemColorScheme = systemColorScheme
         appAccent.refresh()
-        refreshSaveSlots()
-        restoreLastSessionIfNeeded()
+        refreshSaveSlotsInBackground()
+        randomPuzzlePrep.schedulePrepForAllDifficulties()
+        Task {
+            if let id = UUID(uuidString: lastFocusedSaveIDString),
+               await Task.detached(priority: .utility) { SaveLoadWork.load(id: id) }.value == nil {
+                lastFocusedSaveIDString = ""
+            }
+            await restoreLastSessionIfNeeded()
+        }
         #if os(macOS)
-        applyWindowAppearance()
         isAppActive = NSApp.isActive
         #else
         isAppActive = scenePhase == .active
@@ -774,7 +1052,7 @@ struct ContentView: View {
 
     private func handleAppActiveChange(_ active: Bool) {
         if !active {
-            persistCurrentGame()
+            persistGameplaySession()
         }
         updateAutoPauseForInterrupts()
         updateDockIcon()
@@ -806,7 +1084,7 @@ struct ContentView: View {
     }
 
     private func evaluateAchievementsAfterCompletion() {
-        guard let game, let saveID = activeSaveID else { return }
+        guard let game, let snapshot = captureOutgoingSave() else { return }
         let context = AchievementCompletionContext(
             difficulty: game.difficulty,
             elapsedSeconds: puzzleTimer.elapsed,
@@ -814,7 +1092,14 @@ struct ContentView: View {
             mistakesInPuzzle: game.mistakesThisPuzzle,
             usedNotes: game.usedNotesThisPuzzle
         )
-        enqueueCelebrations(AchievementStore.recordCompletion(context, saveID: saveID))
+        enqueueCelebrations(AchievementStore.recordCompletion(context, save: snapshot))
+        markStatsCompletionRecordedInSession()
+    }
+
+    private func markStatsCompletionRecordedInSession() {
+        guard var metadata = activeSaveMetadata, !metadata.statsCompletionRecorded else { return }
+        metadata.statsCompletionRecorded = true
+        activeSaveMetadata = metadata
     }
 
     private func restartCurrentPuzzle(game: GameViewModel) {
@@ -826,9 +1111,13 @@ struct ContentView: View {
         }
         game.replayCurrentPuzzle()
         puzzleTimer.start()
-        if let id = activeSaveID, var state = GameSaveStore.load(id: id) {
-            state.statsCompletionRecorded = false
-            GameSaveStore.save(state)
+        if var metadata = activeSaveMetadata {
+            metadata.statsCompletionRecorded = false
+            activeSaveMetadata = metadata
+        }
+        if var snapshot = captureOutgoingSave() {
+            snapshot.statsCompletionRecorded = false
+            SaveLoadWork.enqueueSave(snapshot)
         }
         persistCurrentGame()
     }
@@ -847,20 +1136,31 @@ struct ContentView: View {
     }
 
     private func refreshAppearanceFromSettings() {
-        systemColorScheme = AppearanceMode.systemColorScheme()
+        syncSystemColorSchemeFromPlatform()
         appAccent.systemColorScheme = systemColorScheme
         appAccent.refresh()
-        applyWindowAppearance()
         updateDockIcon()
-    }
-
-    private func applyWindowAppearance() {
         #if os(macOS)
-        let appearance = appearanceMode.resolvedNSAppearance() ?? NSApp.effectiveAppearance
-        for window in NSApplication.shared.windows {
-            window.appearance = appearance
+        if appearanceMode == .system {
+            Task { @MainActor in
+                syncSystemColorSchemeFromPlatform()
+                appAccent.systemColorScheme = systemColorScheme
+                appAccent.refresh()
+                updateDockIcon()
+            }
         }
         #endif
+    }
+
+    private func syncSystemColorSchemeFromPlatform() {
+        systemColorScheme = AppearanceMode.systemColorScheme()
+    }
+
+    /// Avoid pausing/resuming the timer during an in-flight SwiftUI layout pass.
+    private func scheduleAutoPauseInterruptUpdate() {
+        Task { @MainActor in
+            updateAutoPauseForInterrupts()
+        }
     }
 
     private func updateDockIcon() {
@@ -878,87 +1178,87 @@ struct ContentView: View {
         )
     }
 
-    private func restoreLastSessionIfNeeded() {
+    @MainActor
+    private func restoreLastSessionIfNeeded() async {
         guard !isInGame else { return }
-        guard let id = UUID(uuidString: lastFocusedSaveIDString),
-              let state = GameSaveStore.load(id: id),
-              !state.isComplete, !state.isLost else { return }
-        switchToSave(id: id)
+        guard let id = UUID(uuidString: lastFocusedSaveIDString) else { return }
+        let state = await Task.detached(priority: .utility) {
+            SaveLoadWork.load(id: id)
+        }.value
+        guard let state, state.outcome == .playing else { return }
+        await performSaveSwitch(to: id)
     }
 
-    private func schedulePersist() {
-        saveTask?.cancel()
-        saveTask = Task {
-            try? await Task.sleep(nanoseconds: 350_000_000)
-            guard !Task.isCancelled else { return }
-            await MainActor.run {
-                persistCurrentGame()
-            }
+    /// Board + outcome only (triggered by `puzzleRevision`).
+    private func persistPuzzleProgress() {
+        persistOutgoingGameIfNeeded()
+    }
+
+    /// Session chrome and timer (pencil mode, selection, pause, background, switch save).
+    private func persistSessionState() {
+        persistOutgoingGameIfNeeded()
+    }
+
+    /// Timer pause/background also refreshes sidebar elapsed times.
+    private func persistGameplaySession() {
+        persistSessionState()
+        refreshSaveSlotsInBackground()
+    }
+
+    /// Full save file plus sidebar reload (new game, switch save, archive, restart).
+    private func persistCurrentGame() {
+        persistGameplaySession()
+    }
+
+    private func endedLabel(for outcome: PuzzleOutcome) -> String? {
+        switch outcome {
+        case .playing: nil
+        case .won: "Done"
+        case .lost: "Lost"
         }
     }
 
-    private func persistCurrentGame() {
-        persistOutgoingGameIfNeeded()
-        refreshSaveSlots()
+    private func endedLabelColor(for outcome: PuzzleOutcome) -> Color {
+        switch outcome {
+        case .playing: .primary
+        case .won: .green
+        case .lost: .red
+        }
     }
 
-    private func refreshSaveSlots() {
-        saveSlots = GameSaveStore.summaries()
-        saveSlotsRevision &+= 1
+    private func refreshSaveSlotsInBackground() {
+        Task.detached(priority: .utility) {
+            let slots = SaveLoadWork.summaries()
+            await MainActor.run {
+                saveSlots = slots
+            }
+        }
     }
 
     private func archiveSave(id: UUID) {
         let isCurrentGame = activeSaveID == id && isInGame
 
-        if let state = GameSaveStore.load(id: id), !state.isArchived, !state.isComplete, !state.isLost,
-           let abandoned = AchievementStore.recordAbandonedSave(difficulty: state.difficulty) {
-            enqueueCelebrations([abandoned])
+        Task.detached(priority: .utility) {
+            if let state = SaveLoadWork.load(id: id),
+               !state.isArchived,
+               state.outcome == .playing,
+               let abandoned = AchievementStore.recordAbandonedSave(difficulty: state.difficulty) {
+                await MainActor.run {
+                    enqueueCelebrations([abandoned])
+                }
+            }
+            SaveLoadWork.archive(id: id)
+            await MainActor.run {
+                if lastFocusedSaveIDString == id.uuidString {
+                    lastFocusedSaveIDString = ""
+                }
+                refreshSaveSlotsInBackground()
+                guard isCurrentGame else { return }
+                withAnimation(detailNavigationAnimation) {
+                    clearActiveGameState()
+                }
+            }
         }
-
-        GameSaveStore.archive(id: id)
-
-        if lastFocusedSaveIDString == id.uuidString {
-            lastFocusedSaveIDString = ""
-        }
-
-        refreshSaveSlots()
-
-        guard isCurrentGame else { return }
-        withAnimation(detailNavigationAnimation) {
-            clearActiveGameState()
-        }
     }
 
-    private var completionBanner: some View {
-        PuzzleEndBannerView(
-            systemImage: "checkmark.seal.fill",
-            iconColor: .green,
-            title: "Puzzle complete!",
-            subtitle: nil,
-            formattedElapsed: puzzleTimer.formattedElapsed,
-            buttonTitle: "Play again",
-            buttonTint: appAccent.prominentTint,
-            onButton: goHome
-        )
-        .environment(\.colorScheme, resolvedColorScheme)
-    }
-
-    private var lossBanner: some View {
-        PuzzleEndBannerView(
-            systemImage: "xmark.seal.fill",
-            iconColor: .red,
-            title: "Puzzle lost",
-            subtitle: "Impossible mode — one mistake ends the run.",
-            formattedElapsed: puzzleTimer.formattedElapsed,
-            buttonTitle: "Try again",
-            buttonTint: appAccent.prominentTint,
-            onButton: goHome
-        )
-        .environment(\.colorScheme, resolvedColorScheme)
-    }
-
-    private var canStartFromSeedInput: Bool {
-        let trimmed = seedInput.trimmingCharacters(in: .whitespacesAndNewlines)
-        return PuzzleSeed.parse(trimmed, difficulty: seedSheetDifficulty) != nil
-    }
 }

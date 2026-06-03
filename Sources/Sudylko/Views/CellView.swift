@@ -4,7 +4,7 @@ struct CellView: View {
     @ObservedObject var game: GameViewModel
     let index: CellIndex
     let cellSize: CGFloat
-    @Environment(\.digitFontStyle) private var digitFontStyle
+    @Environment(\.puzzleFontStyle) private var puzzleFontStyle
     @Environment(\.appAccent) private var accent
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.isAppActive) private var isAppActive
@@ -51,7 +51,7 @@ struct CellView: View {
             if showsCellContent {
                 if let value {
                     Text("\(value)")
-                        .font(digitFontStyle.font(
+                        .font(puzzleFontStyle.font(
                             size: cellSize * 0.52,
                             weight: game.isGiven(index) ? .bold : .semibold
                         ))
@@ -74,7 +74,7 @@ struct CellView: View {
         return LazyVGrid(columns: cols, spacing: 0) {
             ForEach(1...9, id: \.self) { digit in
                 Text(cellNotes.contains(digit) ? "\(digit)" : " ")
-                    .font(digitFontStyle.font(size: cellSize * 0.2, weight: .medium))
+                    .font(puzzleFontStyle.font(size: cellSize * 0.2, weight: .medium))
                     .foregroundStyle(
                         game.highlightedDigit == digit
                             ? accentColor

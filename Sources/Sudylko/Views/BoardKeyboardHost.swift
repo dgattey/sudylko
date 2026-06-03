@@ -24,11 +24,7 @@ struct BoardKeyboardHost: NSViewRepresentable {
         nsView.onTogglePause = onTogglePause
         nsView.onEscape = onEscape
         nsView.onGoHome = onGoHome
-        DispatchQueue.main.async {
-            if let window = nsView.window, window.firstResponder !== nsView {
-                window.makeFirstResponder(nsView)
-            }
-        }
+        nsView.reclaimFirstResponderIfNeeded()
     }
 
     final class KeyboardNSView: NSView {
@@ -48,6 +44,20 @@ struct BoardKeyboardHost: NSViewRepresentable {
         }
 
         override var acceptsFirstResponder: Bool { true }
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            reclaimFirstResponderIfNeeded()
+        }
+
+        fileprivate func reclaimFirstResponderIfNeeded() {
+            DispatchQueue.main.async { [weak self] in
+                guard let self, let window = self.window else { return }
+                if window.firstResponder !== self {
+                    window.makeFirstResponder(self)
+                }
+            }
+        }
 
         override func performKeyEquivalent(with event: NSEvent) -> Bool {
             if SudylkoKeyEvent.isShiftQuestionMark(event) {
@@ -106,11 +116,13 @@ struct BoardKeyboardHost: NSViewRepresentable {
             }
 
             if let delta = Self.navigationDelta(for: event) {
+                guard game.isInputEnabled, !game.isPuzzleEnded else { return false }
                 game.moveSelection(deltaRow: delta.row, deltaCol: delta.col)
                 return true
             }
 
             if Self.isClearKey(event) {
+                guard game.isInputEnabled, !game.isPuzzleEnded else { return false }
                 game.keyboardClearSelected()
                 return true
             }
@@ -119,9 +131,8 @@ struct BoardKeyboardHost: NSViewRepresentable {
                 return HelpMenuShortcutController.shared.performShortcut(from: self)
             }
 
-            guard game.isInputEnabled, !game.isPuzzleEnded else { return false }
-
             if let digit = Self.digit(from: event) {
+                guard game.isInputEnabled, !game.isPuzzleEnded else { return false }
                 guard let selected = game.selected else { return true }
                 if game.isPencilMode {
                     game.toggleNote(digit, at: selected)
@@ -132,6 +143,7 @@ struct BoardKeyboardHost: NSViewRepresentable {
             }
 
             if let char = event.charactersIgnoringModifiers?.lowercased(), char.count == 1 {
+                guard game.isInputEnabled, !game.isPuzzleEnded else { return false }
                 game.handleKey(char)
                 return true
             }

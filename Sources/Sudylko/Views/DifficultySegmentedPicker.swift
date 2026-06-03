@@ -4,6 +4,9 @@ import SwiftUI
 struct DifficultySegmentedPicker: View {
     @Binding var selection: GameDifficulty
 
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.appAccent) private var accent
+
     var body: some View {
         HStack(spacing: 2) {
             ForEach(GameDifficulty.allCases) { level in
@@ -11,7 +14,7 @@ struct DifficultySegmentedPicker: View {
             }
         }
         .padding(3)
-        .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .inspectorControlTrack()
         .frame(maxWidth: .infinity)
     }
 
@@ -23,10 +26,10 @@ struct DifficultySegmentedPicker: View {
         } label: {
             HStack(spacing: 5) {
                 Image(systemName: theme.systemImage)
-                    .font(.caption.weight(.semibold))
+                    .font(.caption)
                     .foregroundStyle(theme.tint)
                 Text(level.displayName)
-                    .font(.caption.weight(.semibold))
+                    .font(.caption)
                     .foregroundStyle(.primary)
             }
             .frame(maxWidth: .infinity)
@@ -34,13 +37,10 @@ struct DifficultySegmentedPicker: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .background {
-            if isSelected {
-                RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .fill(Color.primary.opacity(colorScheme == .dark ? 0.22 : 0.1))
-            }
-        }
+        .inspectorSegmentSelection(
+            isSelected: isSelected,
+            accent: accent,
+            colorScheme: colorScheme
+        )
     }
-
-    @Environment(\.colorScheme) private var colorScheme
 }

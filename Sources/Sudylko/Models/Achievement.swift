@@ -115,6 +115,30 @@ struct AchievementCompletionContext: Equatable {
     let startedFromCustomSeed: Bool
     let mistakesInPuzzle: Int
     let usedNotes: Bool
+
+    init(
+        difficulty: GameDifficulty,
+        elapsedSeconds: Double,
+        startedFromCustomSeed: Bool,
+        mistakesInPuzzle: Int,
+        usedNotes: Bool
+    ) {
+        self.difficulty = difficulty
+        self.elapsedSeconds = elapsedSeconds
+        self.startedFromCustomSeed = startedFromCustomSeed
+        self.mistakesInPuzzle = mistakesInPuzzle
+        self.usedNotes = usedNotes
+    }
+
+    init(save: SavedGameState) {
+        self.init(
+            difficulty: save.difficulty,
+            elapsedSeconds: save.elapsedSeconds,
+            startedFromCustomSeed: save.startedFromCustomSeed,
+            mistakesInPuzzle: save.mistakesThisPuzzle,
+            usedNotes: save.notes.contains { row in row.contains { !$0.isEmpty } }
+        )
+    }
 }
 
 enum AchievementStore {
@@ -150,6 +174,11 @@ enum AchievementStore {
         PlayerStatsStore.reset()
     }
 
+    static func resetAllProgress() {
+        resetUnlocks()
+        resetStats()
+    }
+
     static func recordGameStarted(difficulty: GameDifficulty, fromCustomSeed: Bool) -> AchievementID? {
         var stats = loadStats()
         stats.recordStarted(difficulty: difficulty, fromCustomSeed: fromCustomSeed)
@@ -179,7 +208,7 @@ enum AchievementStore {
         guard !save.statsCompletionRecorded else { return }
         var recorded = save
         recorded.statsCompletionRecorded = true
-        GameSaveStore.save(recorded)
+        SaveLoadWork.enqueueSave(recorded)
     }
 
     static func recordAbandonedSave(difficulty: GameDifficulty) -> AchievementID? {
@@ -194,11 +223,12 @@ enum AchievementStore {
 
     /// Records a finished puzzle into lifetime stats, then returns newly unlocked achievements.
     /// Returns an empty array when this save's win was already counted.
+    /// Caller supplies an in-memory save snapshot (no disk read on the main actor).
     static func recordCompletion(
         _ context: AchievementCompletionContext,
-        saveID: UUID
+        save: SavedGameState
     ) -> [AchievementID] {
-        guard let save = GameSaveStore.load(id: saveID), !save.statsCompletionRecorded else {
+        guard !save.statsCompletionRecorded else {
             return []
         }
 
@@ -212,7 +242,7 @@ enum AchievementStore {
         )
         let didIncrementWin = stats[context.difficulty].won > beforeWon
         guard didIncrementWin else {
-            if save.isComplete {
+            if save.outcome == .won {
                 markStatsCompletionRecorded(save)
             }
             return []

@@ -71,63 +71,6 @@ struct SudylkoApp: App {
                 }
                 .keyboardShortcut("?", modifiers: .shift)
             }
-            #if DEBUG
-            CommandMenu("Debug") {
-                Menu("Unlock achievement") {
-                    ForEach(AchievementID.displayOrder) { achievement in
-                        Button(achievement.title) {
-                            guard AchievementStore.debugUnlock(achievement) else { return }
-                            NotificationCenter.default.post(
-                                name: .debugAchievementUnlocked,
-                                object: achievement
-                            )
-                        }
-                    }
-                }
-                Divider()
-                Menu("Pulse animation") {
-                    Button("Puzzle complete") {
-                        NotificationCenter.default.post(
-                            name: .debugTriggerPulse,
-                            object: DebugPulseKind.puzzleComplete
-                        )
-                    }
-                    Button("Finished row") {
-                        NotificationCenter.default.post(
-                            name: .debugTriggerPulse,
-                            object: DebugPulseKind.finishedRow
-                        )
-                    }
-                    Button("Finished column") {
-                        NotificationCenter.default.post(
-                            name: .debugTriggerPulse,
-                            object: DebugPulseKind.finishedColumn
-                        )
-                    }
-                    Button("Finished 3×3 box") {
-                        NotificationCenter.default.post(
-                            name: .debugTriggerPulse,
-                            object: DebugPulseKind.finishedBox
-                        )
-                    }
-                }
-                Divider()
-                Button("Reset achievements") {
-                    AchievementStore.resetUnlocks()
-                }
-                Button("Reset stats") {
-                    AchievementStore.resetStats()
-                }
-                Button("Seed done game") {
-                    Task { @MainActor in
-                        _ = GameSaveStore.debugSeedCompletedGame()
-                    }
-                }
-                Button("Delete all saves…") {
-                    GameSaveStore.deleteAll()
-                }
-            }
-            #endif
         }
     }
 }

@@ -1,40 +1,42 @@
 import SwiftUI
 
-/// All achievements and lock state, shown on the home screen.
+/// All achievements and lock state (sidebar or inspector).
 struct AchievementsListView: View {
-    @State private var unlockedIDs = AchievementStore.unlockedIDs()
-    @Environment(\.appAccent) private var accent
-    @Environment(\.colorScheme) private var colorScheme
+    var showsResetMenu = false
+    var onRequestReset: ((ProgressResetKind) -> Void)?
 
-    private var unlockedCount: Int {
-        AchievementID.displayOrder.filter { unlockedIDs.contains($0.rawValue) }.count
+    @State private var unlockedIDs = AchievementStore.unlockedIDs()
+
+    private var unlockedAchievements: [AchievementID] {
+        AchievementID.displayOrder.filter { unlockedIDs.contains($0.rawValue) }
+    }
+
+    private var remainingAchievements: [AchievementID] {
+        AchievementID.displayOrder.filter { !unlockedIDs.contains($0.rawValue) }
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .firstTextBaseline) {
-                Text("Achievements")
-                    .font(.title2.weight(.semibold))
-                Spacer()
-                Text("\(unlockedCount) of \(AchievementID.displayOrder.count)")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: InspectorLayout.sectionSpacing) {
+            InspectorPageHeader(
+                title: "Achievements",
+                showsResetMenu: showsResetMenu,
+                resetPanel: .achievements,
+                onRequestReset: onRequestReset
+            )
+
+            if !unlockedAchievements.isEmpty {
+                achievementSection(
+                    title: "Completed (\(unlockedAchievements.count))",
+                    achievements: unlockedAchievements
+                )
             }
 
-            VStack(spacing: 0) {
-                ForEach(Array(AchievementID.displayOrder.enumerated()), id: \.element.id) { index, achievement in
-                    if index > 0 {
-                        Divider()
-                            .padding(.leading, 44)
-                    }
-                    AchievementRowView(
-                        achievement: achievement,
-                        isUnlocked: unlockedIDs.contains(achievement.rawValue)
-                    )
-                }
+            if !remainingAchievements.isEmpty {
+                achievementSection(
+                    title: "Remaining (\(remainingAchievements.count))",
+                    achievements: remainingAchievements
+                )
             }
-            .padding(.vertical, 4)
-            .background(.quaternary.opacity(colorScheme == .dark ? 0.35 : 0.5), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
         }
         .frame(maxWidth: .infinity)
         .onAppear {
@@ -42,6 +44,26 @@ struct AchievementsListView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .achievementsDidChange)) { _ in
             unlockedIDs = AchievementStore.unlockedIDs()
+        }
+    }
+
+    private func achievementSection(title: String, achievements: [AchievementID]) -> some View {
+        VStack(alignment: .leading, spacing: InspectorLayout.sectionTitleSpacing) {
+            InspectorSectionLabel(title: title)
+            achievementList(achievements)
+        }
+    }
+
+    private func achievementList(_ achievements: [AchievementID]) -> some View {
+        InspectorGroupedList {
+            VStack(spacing: 8) {
+                ForEach(achievements) { achievement in
+                    AchievementRowView(
+                        achievement: achievement,
+                        isUnlocked: unlockedIDs.contains(achievement.rawValue)
+                    )
+                }
+            }
         }
     }
 }
@@ -64,17 +86,16 @@ private struct AchievementRowView: View {
                         .foregroundStyle(.tertiary)
                 }
             }
-            .font(.body.weight(.semibold))
+            .font(.headline)
             .symbolRenderingMode(.hierarchical)
             .frame(width: 28, alignment: .center)
 
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: InspectorLayout.detailChipSpacing) {
                 Text(achievement.title)
-                    .font(.subheadline.weight(.semibold))
+                    .font(.subheadline)
                     .foregroundStyle(isUnlocked ? .primary : .secondary)
                 Text(achievement.subtitle)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .font(.callout).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
 
@@ -91,7 +112,6 @@ private struct AchievementRowView: View {
             }
             .font(.body)
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
+        .inspectorListRowPadding()
     }
 }

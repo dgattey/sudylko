@@ -2,22 +2,26 @@ import SwiftUI
 
 struct AppSidebar: View {
     @Binding var activeSaveID: UUID?
+    var liveTimerSaveID: UUID?
     var isInGame: Bool
     var saveSlots: [SaveSlotSummary]
-    var saveSlotsRevision: Int
-    @ObservedObject var liveTimer: PuzzleTimer
+    let liveTimer: PuzzleTimer
     var onNewGame: () -> Void
     var onSelectSave: (UUID) -> Void
     var onArchiveSave: (UUID) -> Void
+    @Binding var savePendingArchive: SaveSlotSummary?
+    @Binding var pendingProgressReset: ProgressResetKind?
 
-    @State private var savePendingArchive: SaveSlotSummary?
+    @State private var sidebarPanel: SidebarPanel = .games
+    @State private var copyFeedbackMessage: String?
+    @State private var copyFeedbackDismissTask: Task<Void, Never>?
 
     @AppStorage("sidebarDoneGamesCollapsed") private var doneGamesCollapsed = true
     @AppStorage("sidebarArchivedGamesCollapsed") private var archivedGamesCollapsed = false
 
     @AppStorage("windowBackgroundMaterial") private var materialRaw = WindowBackgroundMaterial.default.rawValue
     @Environment(\.isWindowFullscreen) private var isWindowFullscreen
-    @Environment(\.digitFontStyle) private var digitFontStyle
+    @Environment(\.puzzleFontStyle) private var puzzleFontStyle
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.appAccent) private var accent
     @Environment(\.appAccentProminentTint) private var prominentTint
@@ -28,11 +32,11 @@ struct AppSidebar: View {
     }
 
     private var activeSaveSlots: [SaveSlotSummary] {
-        saveSlots.filter { !$0.isArchived && !$0.isComplete }
+        saveSlots.filter { !$0.isArchived && $0.outcome != .won }
     }
 
     private var doneSaveSlots: [SaveSlotSummary] {
-        saveSlots.filter { !$0.isArchived && $0.isComplete }
+        saveSlots.filter { !$0.isArchived && $0.outcome == .won }
     }
 
     private var archivedSaveSlots: [SaveSlotSummary] {
@@ -55,36 +59,16 @@ struct AppSidebar: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text("Sudylko")
-                .font(digitFontStyle.font(size: 28, weight: .bold))
+            sidebarBrandHeader
+            sidebarNewGameButton
+            SidebarPanelPicker(selection: $sidebarPanel)
                 .padding(.horizontal, SidebarMetrics.horizontalPadding)
-                .padding(.top, 20)
-                .padding(.bottom, 12)
+                .padding(.bottom, 10)
 
-            Button(action: onNewGame) {
-                Text("New game")
-                    .frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.borderedProminent)
-            .tint(prominentTint)
-            .controlSize(.large)
-            .macOSTooltip(isInGame ? "Return to home and save this game" : "Start a new puzzle")
-            .padding(.horizontal, SidebarMetrics.horizontalPadding)
-            .padding(.bottom, 10)
+            sidebarPanelContent
+                .layoutPriority(1)
 
-            savesList
-
-            Button {
-                NotificationCenter.default.post(name: .showKeyboardShortcuts, object: nil)
-            } label: {
-                Label("Keyboard shortcuts", systemImage: "keyboard")
-                    .frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.bordered)
-            .controlSize(.regular)
-            .macOSTooltip("View keyboard shortcuts")
-            .padding(.horizontal, SidebarMetrics.horizontalPadding)
-            .padding(.vertical, 12)
+            keyboardShortcutsFooter
         }
         #if os(macOS)
         .frame(width: SidebarMetrics.width)
@@ -97,30 +81,102 @@ struct AppSidebar: View {
         .safeAreaPadding(.vertical, SidebarMetrics.columnEdgePadding)
         #endif
         .id("sidebar-glass-\(colorScheme)-\(materialRaw)")
-        .confirmationDialog(
-            archiveDialogTitle,
-            isPresented: archiveDialogPresented,
-            titleVisibility: .visible
-        ) {
-            Button("Archive", role: .destructive) {
-                if let id = savePendingArchive?.id {
-                    onArchiveSave(id)
-                }
-                savePendingArchive = nil
-            }
-            Button("Cancel", role: .cancel) {
-                savePendingArchive = nil
-            }
-        } message: {
-            Text("This game moves to Archived games. You can open it from there later.")
+        #if os(macOS)
+        .overlay(alignment: .bottom) {
+            copyFeedbackOverlay
         }
+        #endif
+    }
+
+    private var sidebarBrandHeader: some View {
+        Text("Sudylko")
+            .font(puzzleFontStyle.font(size: 28, weight: .bold))
+            .padding(.horizontal, SidebarMetrics.horizontalPadding)
+            .padding(.top, 16)
+            .padding(.bottom, 8)
+            .accessibilityAddTraits(.isHeader)
+    }
+
+    private var sidebarNewGameButton: some View {
+        Button(action: onNewGame) {
+            Text("New game")
+                .font(.headline)
+                .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(.borderedProminent)
+        .tint(prominentTint)
+        .controlSize(.large)
+        .macOSTooltip(isInGame ? "Return to home and save this game" : "Start a new puzzle")
+        .padding(.horizontal, SidebarMetrics.horizontalPadding)
+        .padding(.bottom, 10)
+    }
+
+    private var keyboardShortcutsFooter: some View {
+        Button {
+            NotificationCenter.default.post(name: .showKeyboardShortcuts, object: nil)
+        } label: {
+            Label("Keyboard shortcuts", systemImage: "keyboard")
+                .font(.subheadline)
+                .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(.bordered)
+        .controlSize(.regular)
+        .macOSTooltip("View keyboard shortcuts")
+        .padding(.horizontal, SidebarMetrics.horizontalPadding)
+        .padding(.vertical, 10)
+    }
+
+    @ViewBuilder
+    private var copyFeedbackOverlay: some View {
+        if let copyFeedbackMessage {
+            CopyFeedbackToast(message: copyFeedbackMessage)
+                .padding(.horizontal, SidebarMetrics.horizontalPadding)
+                .padding(.bottom, 8)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+        }
+    }
+
+    @ViewBuilder
+    private var sidebarPanelContent: some View {
+        switch sidebarPanel {
+        case .games:
+            savesList
+        case .statistics:
+            sidebarScroll {
+                PlayerStatsView(
+                    showsResetMenu: true,
+                    onRequestReset: { pendingProgressReset = $0 }
+                )
+            }
+        case .achievements:
+            sidebarScroll {
+                AchievementsListView(
+                    showsResetMenu: true,
+                    onRequestReset: { pendingProgressReset = $0 }
+                )
+            }
+        }
+    }
+
+    private func sidebarScroll<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        ScrollView {
+            content()
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, SidebarMetrics.horizontalPadding)
+                .padding(.top, 8)
+                .padding(.bottom, 8)
+        }
+        .scrollIndicators(.visible)
+        .scrollBounceBehavior(.basedOnSize)
+        .frame(maxHeight: .infinity)
     }
 
     private var savesList: some View {
         List {
-            Section("Existing games") {
+            Section {
                 if activeSaveSlots.isEmpty {
                     Text("No saved games")
+                        .font(.callout)
                         .foregroundStyle(.secondary)
                         .listRowInsets(SidebarMetrics.saveRowInsets)
                         .listRowBackground(Color.clear)
@@ -129,45 +185,67 @@ struct AppSidebar: View {
                         saveRow(slot)
                     }
                 }
+            } header: {
+                sidebarSectionHeader("Existing games")
             }
 
             if !doneSaveSlots.isEmpty {
-                Section("Done games", isExpanded: doneGamesExpanded) {
+                Section(isExpanded: doneGamesExpanded) {
                     ForEach(doneSaveSlots, id: \.id) { slot in
                         saveRow(slot)
                     }
+                } header: {
+                    sidebarSectionHeader("Done games")
                 }
             }
 
             if !archivedSaveSlots.isEmpty {
-                Section("Archived games", isExpanded: archivedGamesExpanded) {
+                Section(isExpanded: archivedGamesExpanded) {
                     ForEach(archivedSaveSlots, id: \.id) { slot in
                         saveRow(slot)
                     }
+                } header: {
+                    sidebarSectionHeader("Archived games")
                 }
             }
         }
-        .id(saveSlotsRevision)
         .listStyle(.sidebar)
         .scrollContentBackground(.hidden)
         .contentMargins(.horizontal, SidebarMetrics.horizontalPadding, for: .scrollContent)
-        #if os(macOS)
-        .contentMargins(.vertical, SidebarMetrics.columnScrollContentMargin, for: .scrollContent)
-        #endif
+        .scrollBounceBehavior(.basedOnSize)
         .frame(maxHeight: .infinity)
     }
 
     private func saveRow(_ slot: SaveSlotSummary) -> some View {
-        Button {
-            onSelectSave(slot.id)
-        } label: {
-            SaveRowView(
-                slot: slot,
-                displayTime: displayTime(for: slot),
-                onArchiveTap: { savePendingArchive = slot }
-            )
+        let row = SaveRowView(
+            slot: slot,
+            staticElapsed: PuzzleTimer.format(slot.elapsedSeconds),
+            showsLiveTimer: slot.id == liveTimerSaveID,
+            liveTimer: liveTimer,
+            onArchiveTap: { handleArchiveTap(slot) }
+        )
+        return Group {
+            if slot.id == liveTimerSaveID {
+                row
+            } else {
+                row.equatable()
+            }
         }
-        .buttonStyle(.plain)
+        .contentShape(Rectangle())
+        .onTapGesture(count: 2) {
+            copySeedFromSlot(slot)
+        }
+        .onTapGesture(count: 1) {
+            onSelectSave(slot.id)
+        }
+        .contextMenu {
+            Button {
+                copySeedFromSlot(slot)
+            } label: {
+                Label("Copy number", systemImage: "doc.on.doc")
+            }
+        }
+        .macOSTooltip("Double-click to copy puzzle number")
         .id(slot.id)
         .frame(maxWidth: .infinity, alignment: .leading)
         .listRowInsets(SidebarMetrics.saveRowInsets)
@@ -175,40 +253,49 @@ struct AppSidebar: View {
         .listRowSeparator(.hidden)
     }
 
+    private func copySeedFromSlot(_ slot: SaveSlotSummary) {
+        let seed = slot.puzzleSeed.clipboardText
+        Clipboard.copy(seed)
+        let difficulty = slot.puzzleSeed.difficulty.displayName
+        withAnimation(.easeInOut(duration: 0.2)) {
+            copyFeedbackMessage = "Copied \(seed) (\(difficulty)) to clipboard"
+        }
+        copyFeedbackDismissTask?.cancel()
+        copyFeedbackDismissTask = Task {
+            try? await Task.sleep(for: .seconds(2.2))
+            guard !Task.isCancelled else { return }
+            await MainActor.run {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    copyFeedbackMessage = nil
+                }
+            }
+        }
+    }
+
     @ViewBuilder
     private func rowBackground(isSelected: Bool) -> some View {
-        if isSelected {
-            RoundedRectangle(cornerRadius: 6, style: .continuous)
-                .fill(accent.selectionFill(for: colorScheme))
-                .overlay {
-                    RoundedRectangle(cornerRadius: 6, style: .continuous)
-                        .strokeBorder(accent.selectionBorder(for: colorScheme), lineWidth: 1)
-                }
-                .padding(.horizontal, SidebarMetrics.selectionBackgroundHorizontalInset)
+        Color.clear
+            .inspectorSegmentSelection(
+                isSelected: isSelected,
+                accent: accent,
+                colorScheme: colorScheme,
+                cornerRadius: InspectorLayout.controlSegmentCornerRadius
+            )
+            .padding(.horizontal, SidebarMetrics.selectionBackgroundHorizontalInset)
+    }
+
+    private func handleArchiveTap(_ slot: SaveSlotSummary) {
+        if slot.outcome.requiresArchiveConfirmation {
+            savePendingArchive = slot
         } else {
-            Color.clear
+            onArchiveSave(slot.id)
         }
     }
 
-    private var archiveDialogTitle: String {
-        if let slot = savePendingArchive {
-            return "Archive \(slot.gameTitle)?"
-        }
-        return "Archive save?"
+    private func sidebarSectionHeader(_ title: String) -> some View {
+        InspectorSectionLabel(title: title)
+            .padding(.top, SidebarMetrics.sectionHeaderTopPadding)
+            .padding(.bottom, SidebarMetrics.sectionHeaderBottomPadding)
     }
 
-    private var archiveDialogPresented: Binding<Bool> {
-        Binding(
-            get: { savePendingArchive != nil },
-            set: { if !$0 { savePendingArchive = nil } }
-        )
-    }
-
-    private func displayTime(for slot: SaveSlotSummary) -> String {
-        if slot.id == activeSaveID, liveTimer.isRunning || liveTimer.isPaused {
-            return liveTimer.formattedElapsed
-        }
-        return PuzzleTimer.format(slot.elapsedSeconds)
-    }
 }
-

@@ -16,14 +16,13 @@ struct WindowBackgroundMaterialControl: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: FormLayout.sectionSpacing) {
             HStack {
-                Text("Window transparency")
-                    .font(.caption.weight(.medium))
-                    .foregroundStyle(.secondary)
+                FormSectionLabel(title: "Window transparency")
                 Spacer()
                 Text("\(selected.transparencyPercent)%")
-                    .font(.caption.monospacedDigit())
+                    .font(.footnote)
+                    .monospacedDigit()
                     .foregroundStyle(.secondary)
             }
 

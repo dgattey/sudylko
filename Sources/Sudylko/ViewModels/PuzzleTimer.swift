@@ -58,11 +58,6 @@ final class PuzzleTimer: ObservableObject {
         }
     }
 
-    func stop() {
-        pause()
-        isRunning = false
-    }
-
     func finish() {
         if isRunning && !isPaused {
             commitSegment()
@@ -80,7 +75,7 @@ final class PuzzleTimer: ObservableObject {
         isPaused = state.timerPaused
         isRunning = state.timerRunning
 
-        if state.isComplete || state.isLost {
+        if state.outcome.isEnded {
             finish()
             return
         }
@@ -101,7 +96,7 @@ final class PuzzleTimer: ObservableObject {
 
     private func startTicker() {
         stopTicker()
-        ticker = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
+        ticker = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
             Task { @MainActor in
                 self?.refreshElapsed()
             }

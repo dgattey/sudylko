@@ -1,6 +1,6 @@
 import Foundation
 
-struct GeneratedPuzzle {
+struct GeneratedPuzzle: Sendable {
     /// 9×9 solution grid (1–9).
     let solution: [[Int]]
     /// 9×9 puzzle; `nil` = empty cell.
@@ -8,7 +8,7 @@ struct GeneratedPuzzle {
     let givens: Set<CellIndex>
 }
 
-struct CellIndex: Hashable, Sendable {
+struct CellIndex: Hashable, Sendable, Codable {
     let row: Int
     let col: Int
 }
@@ -17,7 +17,12 @@ enum PuzzleGenerator {
     private static let size = 9
     private static let box = 3
 
-    static func generate(seed: UInt64, difficulty: GameDifficulty) -> GeneratedPuzzle {
+    /// - Parameter validateRemovals: When `true`, each clue removal must stay unique and logic-solvable (new games only).
+    static func generate(
+        seed: UInt64,
+        difficulty: GameDifficulty,
+        validateRemovals: Bool = true
+    ) -> GeneratedPuzzle {
         var rng = SeededRNG(seed: seed)
         var solution = Array(repeating: Array(repeating: 0, count: size), count: size)
 
@@ -41,9 +46,16 @@ enum PuzzleGenerator {
             let r = index.row
             let c = index.col
             guard puzzle[r][c] != nil else { continue }
+            let backup = puzzle[r][c]
             puzzle[r][c] = nil
             givens.remove(index)
-            removed += 1
+            let keepRemoval = !validateRemovals || isValidClueRemoval(puzzle: puzzle)
+            if keepRemoval {
+                removed += 1
+            } else {
+                puzzle[r][c] = backup
+                givens.insert(index)
+            }
         }
 
         return GeneratedPuzzle(
@@ -54,6 +66,12 @@ enum PuzzleGenerator {
     }
 
     // MARK: - Generation helpers
+
+    /// Keeps a unique solution and a logic-only solving path (no guessing branches).
+    private static func isValidClueRemoval(puzzle: [[Int?]]) -> Bool {
+        guard PuzzleValidity.isSolvableWithoutGuessing(puzzle: puzzle) else { return false }
+        return PuzzleValidity.hasUniqueSolution(puzzle: puzzle)
+    }
 
     private static func fillDiagonalBoxes(grid: inout [[Int]], rng: inout SeededRNG) {
         for boxIndex in 0..<box {

@@ -17,6 +17,7 @@ extension Notification.Name {
     #if DEBUG
     static let debugAchievementUnlocked = Notification.Name("SudylkoDebugAchievementUnlocked")
     static let debugTriggerPulse = Notification.Name("SudylkoDebugTriggerPulse")
+    static let requestDeleteAllSavesConfirmation = Notification.Name("SudylkoRequestDeleteAllSavesConfirmation")
     #endif
 }
 
@@ -26,5 +27,6 @@ enum DebugPulseKind {
     case finishedRow
     case finishedColumn
     case finishedBox
+    case finishedDigit
 }
 #endif

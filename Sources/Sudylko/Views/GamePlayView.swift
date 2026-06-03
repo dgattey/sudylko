@@ -3,16 +3,12 @@ import SwiftUI
 struct GamePlayView: View {
     @ObservedObject var game: GameViewModel
     @ObservedObject var timer: PuzzleTimer
-    var onRestart: () -> Void
-    var onArchive: () -> Void
     var onGoHome: () -> Void
+    /// Return `true` when Escape was handled (modal, settings, etc.).
+    var onEscape: () -> Bool
 
     @Binding var showSettings: Bool
-    @Binding var showArchiveConfirmation: Bool
-    @Binding var showRestartConfirmation: Bool
 
-    @AppStorage("revealMistakesImmediately") private var revealMistakesImmediately = false
-    @AppStorage("impossibleMode") private var impossibleMode = false
     @Environment(\.appAccent) private var accent
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.isAppActive) private var isAppActive
@@ -38,42 +34,7 @@ struct GamePlayView: View {
         .onChange(of: game.isPuzzleEnded) { _, _ in syncInputEnabled() }
         .onChange(of: isAppActive) { _, _ in syncInputEnabled() }
         .navigationTitle(game.puzzleSeed.windowTitle)
-        .confirmationDialog(
-            "Archive Game \(game.puzzleSeed.gameNumberLabel)?",
-            isPresented: $showArchiveConfirmation,
-            titleVisibility: .visible
-        ) {
-            Button("Archive", role: .destructive, action: onArchive)
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("This game moves to Archived games. You can open it from there later.")
-        }
-        .confirmationDialog(
-            "Restart this puzzle?",
-            isPresented: $showRestartConfirmation,
-            titleVisibility: .visible
-        ) {
-            Button("Restart", role: .destructive) { onRestart() }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("Your progress on this puzzle will be lost.")
-        }
-        .onAppear {
-            applyGameplaySettings()
-        }
-        .onChange(of: revealMistakesImmediately) { _, _ in
-            applyGameplaySettings()
-        }
-        .onChange(of: impossibleMode) { _, _ in
-            applyGameplaySettings()
-        }
         .hiddenWindowToolbar()
-    }
-
-    private func applyGameplaySettings() {
-        game.revealMistakesImmediately = revealMistakesImmediately
-        game.impossibleMode = impossibleMode
-        game.refreshMistakes()
     }
 
     private func syncInputEnabled() {
@@ -128,6 +89,7 @@ struct GamePlayView: View {
                             boardSide: layout.boardSide,
                             onInteraction: resumeIfPaused
                         )
+                        .allowsHitTesting(isPlayable)
                         .frame(height: layout.numberPadHeight)
                     }
                 case .besideBoard:
@@ -141,6 +103,7 @@ struct GamePlayView: View {
                             boardSide: layout.boardSide,
                             onInteraction: resumeIfPaused
                         )
+                        .allowsHitTesting(isPlayable)
                         .frame(
                             width: layout.numberPadWidth,
                             height: layout.numberPadHeight
@@ -161,16 +124,11 @@ struct GamePlayView: View {
                     timer.togglePause()
                     syncInputEnabled()
                 },
-                onEscape: {
-                    if showSettings {
-                        showSettings = false
-                        return true
-                    }
-                    return false
-                },
+                onEscape: onEscape,
                 onGoHome: onGoHome
             )
             .frame(width: 0, height: 0)
+            .id(game.sessionRevision)
         }
         #endif
     }

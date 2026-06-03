@@ -35,7 +35,7 @@ struct KeyCap: View {
                     .monospacedDigit()
             case .systemImage(let name):
                 Image(systemName: name)
-                    .font(.system(size: 13, weight: .medium))
+                    .font(.footnote)
                     .symbolRenderingMode(.monochrome)
             }
         }

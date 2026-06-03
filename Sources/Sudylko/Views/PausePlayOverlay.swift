@@ -12,7 +12,7 @@ struct PausePlayOverlay: View {
 
             Button(action: onResume) {
                 Image(systemName: "play.fill")
-                    .font(.system(size: 36, weight: .semibold))
+                    .sudylkoSymbolFont(.pausePlayControl)
                     .foregroundStyle(.white)
                     .frame(width: 88, height: 88)
                     .background(accent.displayColor(for: colorScheme), in: Circle())

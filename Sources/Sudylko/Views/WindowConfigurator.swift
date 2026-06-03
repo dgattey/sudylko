@@ -3,6 +3,8 @@ import AppKit
 import SwiftUI
 
 /// Aligns the NSWindow with the in-app appearance picker and publishes `NSApp.isActive`.
+/// Window mutations are deferred off `updateNSView` — setting `isMovableByWindowBackground` during
+/// layout can crash SwiftUI's `NSHostingView` KVO (`LazyPreventsWindowDragFeature`).
 struct WindowConfigurator: NSViewRepresentable {
     let appearanceMode: AppearanceMode
     var minimumWindowSize: CGSize = CGSize(width: 780, height: 640)
@@ -10,60 +12,112 @@ struct WindowConfigurator: NSViewRepresentable {
     @Binding var isWindowMiniaturized: Bool
     @Binding var isWindowFullscreen: Bool
 
+    func makeCoordinator() -> Coordinator {
+        Coordinator(
+            isAppActive: $isAppActive,
+            isWindowMiniaturized: $isWindowMiniaturized,
+            isWindowFullscreen: $isWindowFullscreen
+        )
+    }
+
     func makeNSView(context: Context) -> ThemedWindowAnchor {
         let view = ThemedWindowAnchor()
-        view.onSystemAppearanceChange = {
-            NotificationCenter.default.post(name: .sudylkoSystemThemeDidChange, object: nil)
-        }
-        view.onApplicationActiveChange = { active in
-            isAppActive = active
-        }
-        view.onWindowMiniaturizedChange = { miniaturized in
-            isWindowMiniaturized = miniaturized
-        }
-        view.onWindowFullscreenChange = { fullscreen in
-            isWindowFullscreen = fullscreen
-        }
+        context.coordinator.attach(anchor: view)
         return view
     }
 
     func updateNSView(_ nsView: ThemedWindowAnchor, context: Context) {
-        nsView.onSystemAppearanceChange = {
-            NotificationCenter.default.post(name: .sudylkoSystemThemeDidChange, object: nil)
-        }
-        nsView.onApplicationActiveChange = { active in
-            isAppActive = active
-        }
-        nsView.onWindowMiniaturizedChange = { miniaturized in
-            isWindowMiniaturized = miniaturized
-        }
-        nsView.onWindowFullscreenChange = { fullscreen in
-            isWindowFullscreen = fullscreen
-        }
-        DispatchQueue.main.async {
-            configure(nsView.window, mode: appearanceMode, minimumSize: minimumWindowSize)
-            isAppActive = NSApp.isActive
-            isWindowMiniaturized = nsView.window?.isMiniaturized ?? false
-            isWindowFullscreen = nsView.window?.styleMask.contains(.fullScreen) == true
-        }
+        context.coordinator.attach(anchor: nsView)
+        context.coordinator.scheduleApply(
+            appearanceMode: appearanceMode,
+            minimumSize: minimumWindowSize
+        )
     }
 
-    private func configure(_ window: NSWindow?, mode: AppearanceMode, minimumSize: CGSize) {
-        guard let window else { return }
-        window.titlebarAppearsTransparent = true
-        window.titleVisibility = .hidden
-        window.styleMask.insert(.fullSizeContentView)
-        window.isMovableByWindowBackground = true
-        window.appearance = mode.resolvedNSAppearance() ?? NSApp.effectiveAppearance
-        window.isOpaque = false
-        window.backgroundColor = .clear
-        window.hasShadow = true
-        window.titlebarSeparatorStyle = .none
-        window.minSize = minimumSize
-        if window.frame.width < minimumSize.width {
-            var frame = window.frame
-            frame.size.width = minimumSize.width
-            window.setFrame(frame, display: true, animate: true)
+    final class Coordinator {
+        @Binding private var isAppActive: Bool
+        @Binding private var isWindowMiniaturized: Bool
+        @Binding private var isWindowFullscreen: Bool
+
+        private weak var anchor: ThemedWindowAnchor?
+        private var pendingApply: DispatchWorkItem?
+        private var lastAppearanceMode: AppearanceMode?
+        private var lastMinimumSize: CGSize?
+
+        init(
+            isAppActive: Binding<Bool>,
+            isWindowMiniaturized: Binding<Bool>,
+            isWindowFullscreen: Binding<Bool>
+        ) {
+            _isAppActive = isAppActive
+            _isWindowMiniaturized = isWindowMiniaturized
+            _isWindowFullscreen = isWindowFullscreen
+        }
+
+        func attach(anchor: ThemedWindowAnchor) {
+            self.anchor = anchor
+            anchor.onSystemAppearanceChange = { [weak self] in
+                NotificationCenter.default.post(name: .sudylkoSystemThemeDidChange, object: nil)
+            }
+            anchor.onApplicationActiveChange = { [weak self] active in
+                self?.publishAppActive(active)
+            }
+            anchor.onWindowMiniaturizedChange = { [weak self] miniaturized in
+                self?.publishMiniaturized(miniaturized)
+            }
+            anchor.onWindowFullscreenChange = { [weak self] fullscreen in
+                self?.publishFullscreen(fullscreen)
+            }
+        }
+
+        func scheduleApply(appearanceMode: AppearanceMode, minimumSize: CGSize) {
+            pendingApply?.cancel()
+            let work = DispatchWorkItem { [weak self] in
+                self?.apply(appearanceMode: appearanceMode, minimumSize: minimumSize)
+            }
+            pendingApply = work
+            DispatchQueue.main.async(execute: work)
+        }
+
+        private func apply(appearanceMode: AppearanceMode, minimumSize: CGSize) {
+            guard let window = anchor?.window else { return }
+
+            anchor?.configureWindowChromeIfNeeded(window)
+
+            let appearance = appearanceMode.resolvedNSAppearance() ?? NSApp.effectiveAppearance
+            if lastAppearanceMode != appearanceMode || window.appearance != appearance {
+                window.appearance = appearance
+                lastAppearanceMode = appearanceMode
+            }
+
+            if lastMinimumSize != minimumSize {
+                window.minSize = minimumSize
+                lastMinimumSize = minimumSize
+                if window.frame.width < minimumSize.width {
+                    var frame = window.frame
+                    frame.size.width = minimumSize.width
+                    window.setFrame(frame, display: true, animate: false)
+                }
+            }
+
+            publishAppActive(NSApp.isActive)
+            publishMiniaturized(window.isMiniaturized)
+            publishFullscreen(window.styleMask.contains(.fullScreen))
+        }
+
+        private func publishAppActive(_ active: Bool) {
+            guard isAppActive != active else { return }
+            isAppActive = active
+        }
+
+        private func publishMiniaturized(_ miniaturized: Bool) {
+            guard isWindowMiniaturized != miniaturized else { return }
+            isWindowMiniaturized = miniaturized
+        }
+
+        private func publishFullscreen(_ fullscreen: Bool) {
+            guard isWindowFullscreen != fullscreen else { return }
+            isWindowFullscreen = fullscreen
         }
     }
 }
@@ -75,6 +129,8 @@ final class ThemedWindowAnchor: NSView {
     var onWindowMiniaturizedChange: ((Bool) -> Void)?
     var onWindowFullscreenChange: ((Bool) -> Void)?
 
+    private static var chromeConfiguredWindowIDs = Set<ObjectIdentifier>()
+
     private var themeObserver: NSObjectProtocol?
     private var appActiveObservers: [NSObjectProtocol] = []
     private var windowMiniaturizeObservers: [NSObjectProtocol] = []
@@ -83,10 +139,28 @@ final class ThemedWindowAnchor: NSView {
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
+        if let window {
+            configureWindowChromeIfNeeded(window)
+        }
         installThemeObserverIfNeeded()
         installApplicationActiveObserversIfNeeded()
         installWindowMiniaturizeObserversIfNeeded()
         installWindowFullscreenObserversIfNeeded()
+    }
+
+    func configureWindowChromeIfNeeded(_ window: NSWindow) {
+        let id = ObjectIdentifier(window)
+        guard !Self.chromeConfiguredWindowIDs.contains(id) else { return }
+        Self.chromeConfiguredWindowIDs.insert(id)
+
+        window.titlebarAppearsTransparent = true
+        window.titleVisibility = .hidden
+        window.styleMask.insert(.fullSizeContentView)
+        window.isMovableByWindowBackground = true
+        window.isOpaque = false
+        window.backgroundColor = .clear
+        window.hasShadow = true
+        window.titlebarSeparatorStyle = .none
     }
 
     private func installThemeObserverIfNeeded() {

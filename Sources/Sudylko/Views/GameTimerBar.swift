@@ -35,14 +35,13 @@ struct GameTimerBar: View {
                 .foregroundStyle(.secondary)
 
             Text(timer.formattedElapsed)
-                .font(.system(size: 16, weight: .medium, design: .monospaced))
+                .font(.callout)
                 .monospacedDigit()
-                .foregroundStyle(.primary)
                 .frame(minWidth: 68, alignment: .leading)
 
             if isPuzzleEnded, let endedLabel {
                 Text(endedLabel)
-                    .font(.subheadline.weight(.semibold))
+                    .font(.callout)
                     .foregroundStyle(endedLabelColor)
             } else {
                 Label(
@@ -50,7 +49,7 @@ struct GameTimerBar: View {
                     systemImage: timer.isPaused ? "play.fill" : "pause.fill"
                 )
                 .labelStyle(.titleAndIcon)
-                .font(.subheadline)
+                .font(.body)
                 .foregroundStyle(timer.isRunning ? .primary : .secondary)
             }
         }

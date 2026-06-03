@@ -36,7 +36,7 @@ struct KeyboardShortcutsView: View {
         VStack(alignment: .leading, spacing: 20) {
             #if os(macOS)
             Text("Keyboard shortcuts")
-                .font(.title2.weight(.semibold))
+                .font(.title2)
                 .frame(maxWidth: .infinity, alignment: .leading)
             #endif
 
@@ -60,8 +60,7 @@ struct KeyboardShortcutsView: View {
                 shortcutRow("Enter a digit in the selected cell") {
                     KeyCap("1")
                     Text("–")
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundStyle(.secondary)
+                        .font(.footnote).foregroundStyle(.secondary)
                     KeyCap("9")
                 }
 
@@ -104,7 +103,6 @@ struct KeyboardShortcutsView: View {
         VStack(alignment: .leading, spacing: 8) {
             Text(description)
                 .font(.body)
-                .foregroundStyle(.primary)
             HStack(spacing: 5) {
                 keys()
             }

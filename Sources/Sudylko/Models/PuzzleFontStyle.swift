@@ -1,6 +1,7 @@
 import SwiftUI
 
-enum DigitFontStyle: String, CaseIterable, Identifiable {
+/// Typeface for puzzle numbers and brand `.largeTitle` text (settings → Puzzle font).
+enum PuzzleFontStyle: String, CaseIterable, Identifiable {
     case rounded
     case classic
     case stencil
@@ -30,7 +31,7 @@ enum DigitFontStyle: String, CaseIterable, Identifiable {
         case .stencil:
             .system(size: size, weight: .heavy, design: .monospaced)
         case .soft:
-            .system(size: size, weight: .semibold, design: .default)
+            .system(size: size, weight: weight, design: .default)
         case .slab:
             .system(size: size, weight: .black, design: .serif)
         case .outline:
@@ -39,13 +40,13 @@ enum DigitFontStyle: String, CaseIterable, Identifiable {
     }
 }
 
-private struct DigitFontKey: EnvironmentKey {
-    static let defaultValue: DigitFontStyle = .rounded
+private struct PuzzleFontKey: EnvironmentKey {
+    static let defaultValue: PuzzleFontStyle = .rounded
 }
 
 extension EnvironmentValues {
-    var digitFontStyle: DigitFontStyle {
-        get { self[DigitFontKey.self] }
-        set { self[DigitFontKey.self] = newValue }
+    var puzzleFontStyle: PuzzleFontStyle {
+        get { self[PuzzleFontKey.self] }
+        set { self[PuzzleFontKey.self] = newValue }
     }
 }

@@ -66,6 +66,20 @@ public enum AppAccentColor: String, CaseIterable, Identifiable, Sendable {
         interactiveForeground(for: colorScheme).opacity(0.12)
     }
 
+    /// Text and icons on a solid `displayColor` fill (progress toggles, chips).
+    public func onFilledSurfaceForeground(for colorScheme: ColorScheme) -> Color {
+        switch self {
+        case .yellow, .orange:
+            return colorScheme == .dark
+                ? Color(white: 0.12)
+                : Color(white: 0.14)
+        case .green:
+            return .white
+        default:
+            return .white
+        }
+    }
+
     public func selectionBorder(for colorScheme: ColorScheme) -> Color {
         switch self {
         case .yellow, .orange, .green:

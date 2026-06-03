@@ -13,7 +13,7 @@ struct NumberPadView: View {
     var boardSide: CGFloat = 0
     var onInteraction: (() -> Void)? = nil
 
-    @Environment(\.digitFontStyle) private var digitFontStyle
+    @Environment(\.puzzleFontStyle) private var puzzleFontStyle
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.appAccent) private var accent
 
@@ -136,12 +136,12 @@ struct NumberPadView: View {
             Group {
                 if inNoteMode {
                     Text("\(digit)")
-                        .font(digitFontStyle.font(size: keySize * 0.28, weight: .semibold))
+                        .font(puzzleFontStyle.font(size: keySize * 0.28, weight: .semibold))
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
                         .padding(5)
                 } else {
                     Text("\(digit)")
-                        .font(digitFontStyle.font(size: keySize * 0.45, weight: .semibold))
+                        .font(puzzleFontStyle.font(size: keySize * 0.45, weight: .semibold))
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
             }

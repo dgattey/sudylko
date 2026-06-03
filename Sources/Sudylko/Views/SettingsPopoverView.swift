@@ -3,55 +3,43 @@ import SwiftUI
 struct SettingsPopoverView: View {
     @AppStorage("appearanceMode") private var appearanceRaw = AppearanceMode.system.rawValue
     @AppStorage("accentColor") private var accentRaw = AppAccentColor.blue.rawValue
-    @AppStorage("digitFontStyle") private var fontStyleRaw = DigitFontStyle.rounded.rawValue
+    @AppStorage("puzzleFontStyle") private var fontStyleRaw = PuzzleFontStyle.rounded.rawValue
     @AppStorage("revealMistakesImmediately") private var revealMistakesImmediately = false
     @AppStorage("impossibleMode") private var impossibleMode = false
     @AppStorage("hideNumbersWhenInactive") private var hideNumbersWhenInactive = true
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 20) {
+        VStack(alignment: .leading, spacing: FormLayout.groupSpacing) {
             AppearancePickerView(appearanceRaw: $appearanceRaw)
             WindowBackgroundMaterialControl()
 
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Display")
-                    .font(.caption.weight(.medium))
-                    .foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: FormLayout.sectionSpacing) {
+                FormSectionLabel(title: "Display")
 
                 Toggle(isOn: $hideNumbersWhenInactive) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Hide numbers when inactive")
-                            .font(.subheadline)
-                        Text("Blanks the board when Sudylko is not the focused app.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
+                    FormToggleCaption(
+                        title: "Hide numbers when inactive",
+                        caption: "Blanks the board when Sudylko is not the focused app."
+                    )
                 }
                 .sudylkoFocusSuppressed()
             }
 
             AccentColorPickerView(accentRaw: $accentRaw)
-            DigitFontPickerView(fontStyleRaw: $fontStyleRaw)
+            PuzzleFontPickerView(fontStyleRaw: $fontStyleRaw)
 
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Gameplay")
-                    .font(.caption.weight(.medium))
-                    .foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: FormLayout.sectionSpacing) {
+                FormSectionLabel(title: "Gameplay")
 
                 Toggle("Reveal mistakes immediately", isOn: $revealMistakesImmediately)
-                    .font(.subheadline)
+                    .font(.body)
                     .sudylkoFocusSuppressed()
 
                 Toggle(isOn: $impossibleMode) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Impossible mode")
-                            .font(.subheadline)
-                        Text("Ends the game immediately when you enter a wrong number.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
+                    FormToggleCaption(
+                        title: "Impossible mode",
+                        caption: "Ends the game immediately when you enter a wrong number."
+                    )
                 }
                 .sudylkoFocusSuppressed()
             }

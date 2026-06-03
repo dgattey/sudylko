@@ -8,10 +8,8 @@ struct AccentColorPickerView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Accent color")
-                .font(.caption.weight(.medium))
-                .foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: FormLayout.sectionSpacing) {
+            FormSectionLabel(title: "Accent color")
 
             HStack(spacing: 10) {
                 ForEach(AppAccentColor.allCases) { accent in

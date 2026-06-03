@@ -10,7 +10,11 @@ import UIKit
 enum PlatformColor {
     static func systemColorScheme() -> ColorScheme {
         #if os(macOS)
-        let match = NSApp.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua])
+        // Prefer the game window’s effective appearance — NSApp can lag after we clear a forced theme.
+        let appearance = NSApp.keyWindow?.effectiveAppearance
+            ?? NSApp.mainWindow?.effectiveAppearance
+            ?? NSApp.effectiveAppearance
+        let match = appearance.bestMatch(from: [.darkAqua, .aqua])
         return match == .darkAqua ? .dark : .light
         #elseif canImport(UIKit)
         switch UITraitCollection.current.userInterfaceStyle {

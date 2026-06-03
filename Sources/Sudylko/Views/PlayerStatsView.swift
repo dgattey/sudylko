@@ -1,16 +1,17 @@
 import Charts
 import SwiftUI
 
-/// Lifetime stats on the home screen (independent of which saves still exist).
+/// Lifetime stats (sidebar; independent of which saves still exist).
 struct PlayerStatsView: View {
+    var showsResetMenu = false
+    var onRequestReset: ((ProgressResetKind) -> Void)?
+
     @State private var stats = PlayerStatsStore.load()
     @Environment(\.appAccent) private var accent
     @Environment(\.colorScheme) private var colorScheme
     @AppStorage("windowBackgroundMaterial") private var materialRaw = WindowBackgroundMaterial.default.rawValue
     @Environment(\.isWindowFullscreen) private var isWindowFullscreen
 
-    private static let panelCornerRadius: CGFloat = 14
-    private static let panelContentPadding: CGFloat = 14
     private static let chartHeight: CGFloat = 132
     /// Trailing gutter inside the plot so bar percent labels are not clipped at 100%.
     private static let winRateLabelTrailingPadding: CGFloat = 34
@@ -21,7 +22,7 @@ struct PlayerStatsView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: InspectorLayout.sectionSpacing) {
             statsHeader
 
             if stats.totalStarted == 0 {
@@ -53,20 +54,21 @@ struct PlayerStatsView: View {
     // MARK: - Header
 
     private var statsHeader: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text("Statistics")
-                .font(.title2.weight(.semibold))
-            if stats.totalStarted > 0 {
-                Text("\(stats.totalStarted) games across all difficulties")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            } else {
-                Text("Finish a puzzle to see charts and trends here.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-        }
-        .accessibilityElement(children: .combine)
+        InspectorPageHeader(
+            title: "Statistics",
+            subtitle: stats.totalStarted == 0
+                ? "Finish a puzzle to see charts and trends here."
+                : nil,
+            showsResetMenu: showsResetMenu,
+            resetPanel: .statistics,
+            onRequestReset: onRequestReset
+        )
+    }
+
+    private func winRatePercent(won: Int, of total: Int) -> Int {
+        guard total > 0 else { return 0 }
+        let cappedWon = min(won, total)
+        return min(100, Int((Double(cappedWon) / Double(total) * 100).rounded()))
     }
 
     // MARK: - Empty state
@@ -74,24 +76,22 @@ struct PlayerStatsView: View {
     private var emptyStatsPanel: some View {
         VStack(spacing: 10) {
             Image(systemName: "chart.bar.xaxis")
-                .font(.system(size: 28))
+                .sudylkoSymbolFont(.statsEmptyIcon)
                 .symbolRenderingMode(.hierarchical)
                 .foregroundStyle(accent.interactiveForeground(for: colorScheme).opacity(0.85))
             Text("No games yet")
-                .font(.subheadline.weight(.semibold))
+                .font(.subheadline)
             Text("Your wins, streaks, and times will show up after you play.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+                .font(.callout).foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 28)
         .padding(.horizontal, 20)
-        .statsGlassPanel(
+        .inspectorGlassPanel(
             accent: accent,
             colorScheme: colorScheme,
-            material: windowMaterial,
-            cornerRadius: Self.panelCornerRadius
+            material: windowMaterial
         )
         .accessibilityLabel("Statistics. No games recorded yet.")
     }
@@ -99,23 +99,25 @@ struct PlayerStatsView: View {
     // MARK: - Summary row
 
     private var summaryMetricRow: some View {
-        HStack(spacing: 10) {
-            SummaryMetricCard(
-                title: "Won",
-                value: "\(stats.totalWon)",
-                symbol: "trophy.fill",
-                tint: accent.interactiveForeground(for: colorScheme)
-            )
-            SummaryMetricCard(
-                title: "Win rate",
-                value: formatPercent(won: stats.totalWon, of: stats.totalStarted),
-                symbol: "percent",
-                tint: accent.displayColor(for: colorScheme)
-            )
-            if hasBestWinTime {
+        Grid(horizontalSpacing: 10, verticalSpacing: 0) {
+            GridRow {
+                SummaryMetricCard(
+                    title: "Won",
+                    value: "\(stats.totalWon)",
+                    symbol: "trophy.fill",
+                    tint: accent.interactiveForeground(for: colorScheme)
+                )
+                SummaryMetricCard(
+                    title: "Win rate",
+                    value: formatPercent(won: stats.totalWon, of: stats.totalStarted),
+                    symbol: "percent",
+                    tint: accent.displayColor(for: colorScheme)
+                )
                 SummaryMetricCard(
                     title: "Best time",
-                    value: formatOptionalDuration(stats.bestWinSeconds),
+                    value: hasBestWinTime
+                        ? formatOptionalDuration(stats.bestWinSeconds)
+                        : "—",
                     symbol: "stopwatch.fill",
                     tint: .secondary
                 )
@@ -131,28 +133,25 @@ struct PlayerStatsView: View {
                 GridItem(.flexible(), spacing: 8),
             ],
             alignment: .leading,
-            spacing: 8
+            spacing: InspectorLayout.detailGridSpacing
         ) {
             DetailChip(label: "Started", value: "\(stats.totalStarted)")
-            if stats.totalLost > 0 {
-                DetailChip(label: "Lost", value: "\(stats.totalLost)")
-            }
-            if stats.totalWinSeconds > 0 {
-                DetailChip(label: "Total solve time", value: formatDuration(stats.totalWinSeconds))
-            }
-            if let average = stats.averageWinSeconds, average > 0 {
-                DetailChip(label: "Average win", value: formatDuration(average))
-            }
-            if stats.lifetimeMistakes > 0 {
-                DetailChip(label: "Mistakes", value: "\(stats.lifetimeMistakes)")
-            }
+            DetailChip(label: "Lost", value: "\(stats.totalLost)")
+            DetailChip(
+                label: "Total solve time",
+                value: stats.totalWinSeconds > 0 ? formatDuration(stats.totalWinSeconds) : "—"
+            )
+            DetailChip(
+                label: "Average win",
+                value: stats.averageWinSeconds.map { $0 > 0 ? formatDuration($0) : "—" } ?? "—"
+            )
+            DetailChip(label: "Mistakes", value: "\(stats.lifetimeMistakes)")
         }
-        .padding(14)
-        .statsGlassPanel(
+        .padding(InspectorLayout.panelContentPadding)
+        .inspectorGlassPanel(
             accent: accent,
             colorScheme: colorScheme,
-            material: windowMaterial,
-            cornerRadius: Self.panelCornerRadius
+            material: windowMaterial
         )
         .accessibilityLabel(lifetimeOverviewAccessibilityLabel)
     }
@@ -160,8 +159,8 @@ struct PlayerStatsView: View {
     // MARK: - Charts
 
     private var outcomesChartPanel: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            StatsPanelTitle(title: "Games by outcome", subtitle: "Won, lost, and still in progress")
+        VStack(alignment: .leading, spacing: InspectorLayout.panelInternalSpacing) {
+            InspectorPanelHeading(title: "Games by outcome", subtitle: "Won, lost, and still in progress")
 
             Chart(outcomeBarPoints) { point in
                 BarMark(
@@ -199,18 +198,17 @@ struct PlayerStatsView: View {
             .frame(height: Self.chartHeight)
             .accessibilityLabel(outcomesChartAccessibilityLabel)
         }
-        .padding(14)
-        .statsGlassPanel(
+        .padding(InspectorLayout.panelContentPadding)
+        .inspectorGlassPanel(
             accent: accent,
             colorScheme: colorScheme,
-            material: windowMaterial,
-            cornerRadius: Self.panelCornerRadius
+            material: windowMaterial
         )
     }
 
     private var winRateChartPanel: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            StatsPanelTitle(title: "Win rate by difficulty", subtitle: "Share of started games won")
+        VStack(alignment: .leading, spacing: InspectorLayout.panelInternalSpacing) {
+            InspectorPanelHeading(title: "Win rate by difficulty", subtitle: "Share of started games won")
 
             Chart(winRateBarPoints) { point in
                 BarMark(
@@ -249,20 +247,19 @@ struct PlayerStatsView: View {
             .clipped()
             .accessibilityLabel(winRateChartAccessibilityLabel)
         }
-        .padding(Self.panelContentPadding)
-        .statsGlassPanel(
+        .padding(InspectorLayout.panelContentPadding)
+        .inspectorGlassPanel(
             accent: accent,
             colorScheme: colorScheme,
-            material: windowMaterial,
-            cornerRadius: Self.panelCornerRadius
+            material: windowMaterial
         )
     }
 
     // MARK: - Per-difficulty detail
 
     private var difficultyDetailSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            StatsPanelTitle(title: "By difficulty", subtitle: "Times and mistakes per level")
+        VStack(alignment: .leading, spacing: InspectorLayout.sectionTitleSpacing) {
+            InspectorPanelHeading(title: "By difficulty", subtitle: "Times and mistakes per level")
 
             ForEach(difficultiesWithGames) { difficulty in
                 DifficultyStatsCard(
@@ -284,19 +281,17 @@ struct PlayerStatsView: View {
                 .foregroundStyle(PuzzleTheme.fromSeed.tint)
             VStack(alignment: .leading, spacing: 2) {
                 Text("Custom seed")
-                    .font(.subheadline.weight(.semibold))
+                    .font(.headline)
                 Text("\(stats.customSeedWon) won of \(stats.customSeedStarted) started")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .font(.callout).foregroundStyle(.secondary)
             }
             Spacer()
         }
-        .padding(14)
-        .statsGlassPanel(
+        .padding(InspectorLayout.panelContentPadding)
+        .inspectorGlassPanel(
             accent: accent,
             colorScheme: colorScheme,
-            material: windowMaterial,
-            cornerRadius: Self.panelCornerRadius
+            material: windowMaterial
         )
         .accessibilityLabel("Custom seed games. \(stats.customSeedWon) won of \(stats.customSeedStarted) started.")
     }
@@ -415,7 +410,8 @@ struct PlayerStatsView: View {
 
     private func winRateBarPercentLabel(for percent: Double) -> some View {
         Text("\(Int(min(100, percent).rounded()))%")
-            .font(.caption2.weight(.medium).monospacedDigit())
+            .font(.footnote)
+            .monospacedDigit()
             .foregroundStyle(.secondary)
             .fixedSize()
     }
@@ -463,21 +459,6 @@ private extension GameDifficulty {
 
 // MARK: - Subviews
 
-private struct StatsPanelTitle: View {
-    let title: String
-    let subtitle: String
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(title)
-                .font(.subheadline.weight(.semibold))
-            Text(subtitle)
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-        }
-    }
-}
-
 private struct SummaryMetricCard: View {
     let title: String
     let value: String
@@ -485,23 +466,43 @@ private struct SummaryMetricCard: View {
     let tint: Color
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: InspectorLayout.summaryCardInternalSpacing) {
             Image(systemName: symbol)
-                .font(.body.weight(.semibold))
+                .font(.headline)
                 .symbolRenderingMode(.hierarchical)
                 .foregroundStyle(tint)
+                .frame(
+                    maxWidth: .infinity,
+                    minHeight: InspectorLayout.summaryCardIconHeight,
+                    maxHeight: InspectorLayout.summaryCardIconHeight,
+                    alignment: .leading
+                )
             Text(value)
-                .font(.title3.weight(.semibold).monospacedDigit())
+                .font(.title2)
+                .monospacedDigit()
                 .foregroundStyle(.primary)
                 .lineLimit(1)
-                .minimumScaleFactor(0.8)
+                .minimumScaleFactor(0.75)
+                .frame(
+                    maxWidth: .infinity,
+                    minHeight: InspectorLayout.summaryCardValueMinHeight,
+                    alignment: .leading
+                )
             Text(title)
-                .font(.caption2)
+                .font(.footnote)
                 .foregroundStyle(.secondary)
+                .lineLimit(2)
+                .multilineTextAlignment(.leading)
+                .minimumScaleFactor(0.85)
+                .frame(
+                    maxWidth: .infinity,
+                    minHeight: InspectorLayout.summaryCardTitleMinHeight,
+                    alignment: .topLeading
+                )
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(12)
-        .background(.quaternary.opacity(0.55), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .padding(InspectorLayout.summaryCardPadding)
+        .inspectorSummaryCard()
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(title), \(value)")
     }
@@ -517,29 +518,29 @@ private struct DifficultyStatsCard: View {
     private var theme: PuzzleTheme { .forDifficulty(difficulty) }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: InspectorLayout.panelInternalSpacing) {
             HStack(spacing: 8) {
                 Image(systemName: theme.systemImage)
-                    .font(.body.weight(.semibold))
+                    .font(.headline)
                     .symbolRenderingMode(.hierarchical)
                     .foregroundStyle(theme.tint)
                 Text(difficulty.displayName)
-                    .font(.subheadline.weight(.semibold))
+                    .font(.headline)
                 Spacer()
                 Text(winRateText)
-                    .font(.caption.weight(.medium).monospacedDigit())
+                    .font(.callout)
+                    .monospacedDigit()
                     .foregroundStyle(.secondary)
             }
 
             winProgressBar
             detailGrid
         }
-        .padding(14)
-        .statsGlassPanel(
+        .padding(InspectorLayout.panelContentPadding)
+        .inspectorGlassPanel(
             accent: accent,
             colorScheme: colorScheme,
-            material: material,
-            cornerRadius: 14
+            material: material
         )
         .accessibilityElement(children: .combine)
         .accessibilityLabel(difficultyAccessibilityLabel)
@@ -555,7 +556,9 @@ private struct DifficultyStatsCard: View {
         return GeometryReader { geo in
             ZStack(alignment: .leading) {
                 Capsule()
-                    .fill(Color.secondary.opacity(colorScheme == .dark ? 0.25 : 0.15))
+                    .fill(
+                        Color.primary.opacity(InspectorSurface.progressTrackOpacity(for: colorScheme))
+                    )
                 Capsule()
                     .fill(theme.tint.gradient)
                     .frame(width: max(4, geo.size.width * fraction))
@@ -572,7 +575,7 @@ private struct DifficultyStatsCard: View {
                 GridItem(.flexible(), spacing: 8),
             ],
             alignment: .leading,
-            spacing: 8
+            spacing: InspectorLayout.detailGridSpacing
         ) {
             DetailChip(label: "Started", value: "\(bucket.started)")
             DetailChip(label: "Won", value: "\(bucket.displayWon)")
@@ -617,38 +620,23 @@ private struct DetailChip: View {
     let label: String
     let value: String
 
+    private static let labelHeight: CGFloat = 34
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
+        VStack(alignment: .leading, spacing: InspectorLayout.detailChipSpacing) {
             Text(label)
-                .font(.caption2)
-                .foregroundStyle(.tertiary)
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .lineLimit(2)
+                .minimumScaleFactor(0.9)
+                .frame(maxWidth: .infinity, minHeight: Self.labelHeight, alignment: .topLeading)
             Text(value)
-                .font(.caption.weight(.medium).monospacedDigit())
+                .font(.subheadline)
+                .monospacedDigit()
                 .foregroundStyle(.primary)
+                .frame(maxWidth: .infinity, alignment: .leading)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
-// MARK: - Panel chrome
-
-private extension View {
-    func statsGlassPanel(
-        accent: AppAccentColor,
-        colorScheme: ColorScheme,
-        material: WindowBackgroundMaterial,
-        cornerRadius: CGFloat
-    ) -> some View {
-        glassPanel(
-            accent: accent,
-            colorScheme: colorScheme,
-            material: material,
-            cornerRadius: cornerRadius
-        )
-        .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                .strokeBorder(Color.primary.opacity(colorScheme == .dark ? 0.08 : 0.06), lineWidth: 1)
-        )
-    }
-}

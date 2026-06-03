@@ -27,10 +27,9 @@ struct QuickStartTile: View {
                     .symbolRenderingMode(.hierarchical)
                     .foregroundStyle(theme.tint)
                 Text(theme.title)
-                    .font(.title3.weight(.semibold))
-                    .foregroundStyle(.primary)
+                    .font(.headline)
                 Text(theme.subtitle)
-                    .font(.caption)
+                    .font(.callout)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.leading)
             }
