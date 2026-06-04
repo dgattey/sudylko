@@ -1,6 +1,8 @@
 import SwiftUI
 
 struct SaveRowView: View, Equatable {
+    private static let archiveControlSide: CGFloat = 22
+
     let slot: SaveSlotSummary
     let staticElapsed: String
     var showsLiveTimer: Bool = false
@@ -23,16 +25,21 @@ struct SaveRowView: View, Equatable {
                 DifficultyPill(difficulty: slot.puzzleSeed.difficulty)
             }
             Spacer(minLength: 4)
-            SidebarArchiveButton(action: onArchiveTap)
-                .opacity(isHovered ? 1 : 0)
-                .allowsHitTesting(isHovered)
+            Group {
+                if !slot.isArchived {
+                    SidebarArchiveButton(action: onArchiveTap)
+                        .opacity(isHovered ? 1 : 0)
+                        .allowsHitTesting(isHovered)
+                } else {
+                    Color.clear
+                        .accessibilityHidden(true)
+                }
+            }
+            .frame(width: Self.archiveControlSide, height: Self.archiveControlSide)
+            .animation(.easeOut(duration: 0.12), value: isHovered)
             elapsedLabel
         }
-        .onHover { hovering in
-            withAnimation(.easeOut(duration: 0.12)) {
-                isHovered = hovering
-            }
-        }
+        .onHover { isHovered = $0 }
     }
 
     @ViewBuilder

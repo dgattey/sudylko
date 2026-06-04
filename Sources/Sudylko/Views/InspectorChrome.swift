@@ -77,6 +77,37 @@ struct InspectorSectionLabel: View {
     }
 }
 
+/// Sidebar list section header with disclosure chevron; toggles without animating row removal.
+struct CollapsibleSidebarSectionHeader: View {
+    let title: String
+    @Binding var isCollapsed: Bool
+
+    var body: some View {
+        Button {
+            var transaction = Transaction()
+            transaction.disablesAnimations = true
+            withTransaction(transaction) {
+                isCollapsed.toggle()
+            }
+        } label: {
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Image(systemName: "chevron.right")
+                    .font(.caption2.weight(.bold))
+                    .foregroundStyle(.tertiary)
+                    .rotationEffect(.degrees(isCollapsed ? 0 : 90))
+                    .animation(.easeInOut(duration: 0.15), value: isCollapsed)
+                InspectorSectionLabel(title: title)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .buttonStyle(.plain)
+        .padding(.top, SidebarMetrics.sectionHeaderTopPadding)
+        .padding(.bottom, SidebarMetrics.sectionHeaderBottomPadding)
+        .accessibilityAddTraits(.isHeader)
+        .accessibilityValue(isCollapsed ? "collapsed" : "expanded")
+    }
+}
+
 struct InspectorPanelHeading: View {
     let title: String
     let subtitle: String

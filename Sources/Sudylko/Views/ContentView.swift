@@ -637,15 +637,17 @@ struct ContentView: View {
                 .fixedSize()
             }
             ToolbarItemGroup(placement: .primaryAction) {
-                Button("Archive", systemImage: "archivebox", role: .destructive) {
-                    if game.outcome.requiresArchiveConfirmation {
-                        showGameArchiveConfirmation = true
-                    } else if let saveID = activeSaveID {
-                        archiveSave(id: saveID)
+                if activeSaveMetadata?.isArchived != true {
+                    Button("Archive", systemImage: "archivebox", role: .destructive) {
+                        if game.outcome.requiresArchiveConfirmation {
+                            showGameArchiveConfirmation = true
+                        } else if let saveID = activeSaveID {
+                            archiveSave(id: saveID)
+                        }
                     }
+                    .font(.body)
+                    .help("Archive this saved game")
                 }
-                .font(.body)
-                .help("Archive this saved game")
                 Button("Restart", systemImage: "arrow.counterclockwise") {
                     if game.hasPlayerEntries {
                         showGameRestartConfirmation = true
@@ -984,9 +986,6 @@ struct ContentView: View {
               outgoingID != excludedID,
               let game,
               isInGame else { return nil }
-        if puzzleTimer.isRunning, !puzzleTimer.isPaused, !game.isPuzzleEnded {
-            puzzleTimer.pause()
-        }
         guard let metadata = activeSaveMetadata else { return nil }
         return SavedGameState.from(
             id: outgoingID,
@@ -997,6 +996,10 @@ struct ContentView: View {
     }
 
     private func pauseAndPersistOutgoingGame(excluding excludedID: UUID? = nil) {
+        if let game, !game.isPuzzleEnded,
+           puzzleTimer.isRunning, !puzzleTimer.isPaused {
+            puzzleTimer.pause()
+        }
         guard let state = captureOutgoingSave(excluding: excludedID) else { return }
         SaveLoadWork.enqueueSave(state)
         refreshSaveSlotsInBackground()

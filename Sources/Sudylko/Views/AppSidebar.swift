@@ -43,20 +43,6 @@ struct AppSidebar: View {
         saveSlots.filter(\.isArchived)
     }
 
-    private var doneGamesExpanded: Binding<Bool> {
-        Binding(
-            get: { !doneGamesCollapsed },
-            set: { doneGamesCollapsed = !$0 }
-        )
-    }
-
-    private var archivedGamesExpanded: Binding<Bool> {
-        Binding(
-            get: { !archivedGamesCollapsed },
-            set: { archivedGamesCollapsed = !$0 }
-        )
-    }
-
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             sidebarBrandHeader
@@ -190,22 +176,32 @@ struct AppSidebar: View {
             }
 
             if !doneSaveSlots.isEmpty {
-                Section(isExpanded: doneGamesExpanded) {
-                    ForEach(doneSaveSlots, id: \.id) { slot in
-                        saveRow(slot)
+                Section {
+                    if !doneGamesCollapsed {
+                        ForEach(doneSaveSlots, id: \.id) { slot in
+                            saveRow(slot)
+                        }
                     }
                 } header: {
-                    sidebarSectionHeader("Done games")
+                    CollapsibleSidebarSectionHeader(
+                        title: "Done games",
+                        isCollapsed: $doneGamesCollapsed
+                    )
                 }
             }
 
             if !archivedSaveSlots.isEmpty {
-                Section(isExpanded: archivedGamesExpanded) {
-                    ForEach(archivedSaveSlots, id: \.id) { slot in
-                        saveRow(slot)
+                Section {
+                    if !archivedGamesCollapsed {
+                        ForEach(archivedSaveSlots, id: \.id) { slot in
+                            saveRow(slot)
+                        }
                     }
                 } header: {
-                    sidebarSectionHeader("Archived games")
+                    CollapsibleSidebarSectionHeader(
+                        title: "Archived games",
+                        isCollapsed: $archivedGamesCollapsed
+                    )
                 }
             }
         }
