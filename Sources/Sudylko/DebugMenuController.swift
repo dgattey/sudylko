@@ -8,8 +8,12 @@ import Foundation
 
     private static let menuTitle = "Debug"
     private static let unlockAchievementTitle = "Unlock achievement"
+    private static let unlockMultipleTitle = "Unlock multiple"
     private static let pulseAnimationTitle = "Pulse animation"
     private static let deleteAllSavesTitle = "Delete All Saves…"
+
+    /// Sample batch resembling a first easy sub-5-minute win (shows several at once).
+    private static let sampleBatch: [AchievementID] = [.firstGame, .firstVictory, .easyWin, .speedRun]
 
     static func install() {
         guard let mainMenu = NSApp.mainMenu else { return }
@@ -43,6 +47,7 @@ import Foundation
 
     private static func populate(_ menu: NSMenu) {
         menu.addItem(submenuItem(title: unlockAchievementTitle, items: unlockAchievementItems()))
+        menu.addItem(submenuItem(title: unlockMultipleTitle, items: unlockMultipleItems()))
         menu.addItem(submenuItem(title: pulseAnimationTitle, items: pulseAnimationItems()))
         menu.addItem(.separator())
         menu.addItem(actionItem(title: "Reset achievements", action: #selector(resetAchievements(_:))))
@@ -83,6 +88,22 @@ import Foundation
         }
     }
 
+    private static func unlockMultipleItems() -> [NSMenuItem] {
+        [
+            ("First easy sub-5 set (\(sampleBatch.count))", sampleBatch),
+            ("All achievements (\(AchievementID.displayOrder.count))", AchievementID.displayOrder),
+        ].map { title, ids in
+            let item = NSMenuItem(
+                title: title,
+                action: #selector(unlockMultipleAchievements(_:)),
+                keyEquivalent: ""
+            )
+            item.target = shared
+            item.representedObject = ids.map(\.rawValue)
+            return item
+        }
+    }
+
     private enum PulseMenuTag: Int {
         case puzzleComplete = 1
         case finishedRow
@@ -112,11 +133,26 @@ import Foundation
 
     @objc private func unlockAchievement(_ sender: NSMenuItem) {
         guard let raw = sender.representedObject as? String,
-              let achievement = AchievementID(rawValue: raw),
-              AchievementStore.debugUnlock(achievement) else { return }
+              let achievement = AchievementID(rawValue: raw) else { return }
+        postCelebration(for: [achievement])
+    }
+
+    @objc private func unlockMultipleAchievements(_ sender: NSMenuItem) {
+        guard let raws = sender.representedObject as? [String] else { return }
+        let achievements = raws.compactMap(AchievementID.init(rawValue:))
+        postCelebration(for: achievements)
+    }
+
+    /// Persists any newly-unlocked achievements, then always replays the celebration so the
+    /// same one can be previewed repeatedly from the Debug menu.
+    private func postCelebration(for achievements: [AchievementID]) {
+        guard !achievements.isEmpty else { return }
+        for achievement in achievements {
+            AchievementStore.debugUnlock(achievement)
+        }
         NotificationCenter.default.post(
             name: .debugAchievementUnlocked,
-            object: achievement
+            object: achievements
         )
     }
 
@@ -143,6 +179,7 @@ import Foundation
 
     @objc private func resetAllProgress(_ sender: Any?) {
         AchievementStore.resetAllProgress()
+        SaveLoadWork.deleteAll()
     }
 
     @objc private func seedDoneGame(_ sender: Any?) {

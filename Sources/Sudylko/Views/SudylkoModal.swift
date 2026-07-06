@@ -7,6 +7,23 @@ enum SudylkoModalLayout {
     static let cornerRadius: CGFloat = 14
 }
 
+extension View {
+    /// Shared modal surface: opaque material, hairline border, and a layered shadow so dialogs
+    /// read clearly above the dimmed content behind them.
+    func sudylkoModalSurface(cornerRadius: CGFloat = SudylkoModalLayout.cornerRadius) -> some View {
+        background {
+            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                .fill(.thickMaterial)
+                .overlay {
+                    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                        .strokeBorder(Color.primary.opacity(0.12), lineWidth: 1)
+                }
+                .shadow(color: .black.opacity(0.34), radius: 32, y: 18)
+                .shadow(color: .black.opacity(0.16), radius: 7, y: 2)
+        }
+    }
+}
+
 /// Shared sheet/dialog chrome: title, optional subtitle, body, and large footer actions.
 struct SudylkoModal<Content: View, Footer: View>: View {
     let title: String
@@ -23,11 +40,7 @@ struct SudylkoModal<Content: View, Footer: View>: View {
         .padding(SudylkoModalLayout.padding)
         .frame(width: SudylkoModalLayout.width)
         .fixedSize(horizontal: false, vertical: true)
-        .background {
-            RoundedRectangle(cornerRadius: SudylkoModalLayout.cornerRadius, style: .continuous)
-                .fill(.thickMaterial)
-                .shadow(color: .black.opacity(0.18), radius: 24, y: 10)
-        }
+        .sudylkoModalSurface()
     }
 }
 
@@ -137,7 +150,7 @@ struct SudylkoDetailModalOverlay<Modal: View>: View {
     @Environment(\.colorScheme) private var colorScheme
 
     private var scrimOpacity: Double {
-        colorScheme == .dark ? 0.2 : 0.12
+        colorScheme == .dark ? 0.42 : 0.26
     }
 
     var body: some View {

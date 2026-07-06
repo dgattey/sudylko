@@ -317,6 +317,24 @@ enum GameSaveStore {
         postSavesDidChange(.deleteAll)
     }
 
+    static func delete(id: UUID) {
+        UserDefaults.standard.removeObject(forKey: storageKey(for: id))
+        saveIndex(loadIndex().filter { $0 != id })
+        cacheRemove(id: id)
+        postSavesDidChange()
+    }
+
+    static func deleteArchived() {
+        let archivedIDs = loadIndex().filter { load(id: $0)?.isArchived == true }
+        guard !archivedIDs.isEmpty else { return }
+        for id in archivedIDs {
+            UserDefaults.standard.removeObject(forKey: storageKey(for: id))
+            cacheRemove(id: id)
+        }
+        saveIndex(loadIndex().filter { !archivedIDs.contains($0) })
+        postSavesDidChange()
+    }
+
     static func summaries() -> [SaveSlotSummary] {
         loadIndex().compactMap { id -> SaveSlotSummary? in
             guard let state = load(id: id) else { return nil }

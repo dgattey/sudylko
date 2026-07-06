@@ -78,33 +78,50 @@ struct InspectorSectionLabel: View {
 }
 
 /// Sidebar list section header with disclosure chevron; toggles without animating row removal.
-struct CollapsibleSidebarSectionHeader: View {
+/// An optional trailing `accessory` (e.g. a delete-all control) sits opposite the title.
+struct CollapsibleSidebarSectionHeader<Accessory: View>: View {
     let title: String
     @Binding var isCollapsed: Bool
+    @ViewBuilder var accessory: () -> Accessory
+
+    init(
+        title: String,
+        isCollapsed: Binding<Bool>,
+        @ViewBuilder accessory: @escaping () -> Accessory = { EmptyView() }
+    ) {
+        self.title = title
+        self._isCollapsed = isCollapsed
+        self.accessory = accessory
+    }
 
     var body: some View {
-        Button {
-            var transaction = Transaction()
-            transaction.disablesAnimations = true
-            withTransaction(transaction) {
-                isCollapsed.toggle()
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
+            Button {
+                var transaction = Transaction()
+                transaction.disablesAnimations = true
+                withTransaction(transaction) {
+                    isCollapsed.toggle()
+                }
+            } label: {
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Image(systemName: "chevron.right")
+                        .font(.caption2.weight(.bold))
+                        .foregroundStyle(.tertiary)
+                        .rotationEffect(.degrees(isCollapsed ? 0 : 90))
+                        .animation(.easeInOut(duration: 0.15), value: isCollapsed)
+                    InspectorSectionLabel(title: title)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
             }
-        } label: {
-            HStack(alignment: .firstTextBaseline, spacing: 6) {
-                Image(systemName: "chevron.right")
-                    .font(.caption2.weight(.bold))
-                    .foregroundStyle(.tertiary)
-                    .rotationEffect(.degrees(isCollapsed ? 0 : 90))
-                    .animation(.easeInOut(duration: 0.15), value: isCollapsed)
-                InspectorSectionLabel(title: title)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .buttonStyle(.plain)
+            .accessibilityAddTraits(.isHeader)
+            .accessibilityValue(isCollapsed ? "collapsed" : "expanded")
+
+            accessory()
         }
-        .buttonStyle(.plain)
         .padding(.top, SidebarMetrics.sectionHeaderTopPadding)
         .padding(.bottom, SidebarMetrics.sectionHeaderBottomPadding)
-        .accessibilityAddTraits(.isHeader)
-        .accessibilityValue(isCollapsed ? "collapsed" : "expanded")
     }
 }
 

@@ -9,6 +9,7 @@ struct AppSidebar: View {
     var onNewGame: () -> Void
     var onSelectSave: (UUID) -> Void
     var onArchiveSave: (UUID) -> Void
+    var onDeleteSave: (UUID) -> Void
     @Binding var savePendingArchive: SaveSlotSummary?
     @Binding var pendingProgressReset: ProgressResetKind?
 
@@ -201,7 +202,19 @@ struct AppSidebar: View {
                     CollapsibleSidebarSectionHeader(
                         title: "Archived games",
                         isCollapsed: $archivedGamesCollapsed
-                    )
+                    ) {
+                        Button(role: .destructive) {
+                            pendingProgressReset = .archivedGames
+                        } label: {
+                            Image(systemName: "trash")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .macOSTooltip("Delete all archived games")
+                        .padding(.trailing, SidebarMetrics.horizontalPadding)
+                    }
                 }
             }
         }
@@ -218,7 +231,8 @@ struct AppSidebar: View {
             staticElapsed: PuzzleTimer.format(slot.elapsedSeconds),
             showsLiveTimer: slot.id == liveTimerSaveID,
             liveTimer: liveTimer,
-            onArchiveTap: { handleArchiveTap(slot) }
+            onArchiveTap: { handleArchiveTap(slot) },
+            onDeleteTap: slot.isArchived ? { onDeleteSave(slot.id) } : nil
         )
         return Group {
             if slot.id == liveTimerSaveID {
@@ -228,10 +242,7 @@ struct AppSidebar: View {
             }
         }
         .contentShape(Rectangle())
-        .onTapGesture(count: 2) {
-            copySeedFromSlot(slot)
-        }
-        .onTapGesture(count: 1) {
+        .onTapGesture {
             onSelectSave(slot.id)
         }
         .contextMenu {
@@ -241,7 +252,7 @@ struct AppSidebar: View {
                 Label("Copy number", systemImage: "doc.on.doc")
             }
         }
-        .macOSTooltip("Double-click to copy puzzle number")
+        .macOSTooltip("Right-click to copy puzzle number")
         .id(slot.id)
         .frame(maxWidth: .infinity, alignment: .leading)
         .listRowInsets(SidebarMetrics.saveRowInsets)

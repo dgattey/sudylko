@@ -8,6 +8,7 @@ struct SaveRowView: View, Equatable {
     var showsLiveTimer: Bool = false
     var liveTimer: PuzzleTimer?
     var onArchiveTap: () -> Void
+    var onDeleteTap: (() -> Void)?
 
     @State private var isHovered = false
 
@@ -28,6 +29,10 @@ struct SaveRowView: View, Equatable {
             Group {
                 if !slot.isArchived {
                     SidebarArchiveButton(action: onArchiveTap)
+                        .opacity(isHovered ? 1 : 0)
+                        .allowsHitTesting(isHovered)
+                } else if let onDeleteTap {
+                    SidebarDeleteButton(action: onDeleteTap)
                         .opacity(isHovered ? 1 : 0)
                         .allowsHitTesting(isHovered)
                 } else {

@@ -48,6 +48,14 @@ enum SaveLoadWork: Sendable {
         GameSaveStore.deleteAll()
     }
 
+    static func delete(id: UUID) {
+        GameSaveStore.delete(id: id)
+    }
+
+    static func deleteArchived() {
+        GameSaveStore.deleteArchived()
+    }
+
     #if DEBUG
     @discardableResult
     static func debugSeedCompletedGame() -> UUID {

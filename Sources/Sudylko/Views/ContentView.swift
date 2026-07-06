@@ -46,9 +46,9 @@ struct ContentView: View {
     @State private var saveSlots: [SaveSlotSummary] = []
     /// Avoids re-reading the active save from disk when persisting on switch.
     @State private var activeSaveMetadata: SavePersistMetadata?
-    @State private var celebrationQueue: [AchievementID] = []
-    @State private var activeCelebration: AchievementID?
-    @State private var loadingMessage: String?
+    @State private var celebrationQueue: [[AchievementID]] = []
+    @State private var activeCelebrations: [AchievementID] = []
+    @State private var isLoadingPuzzle = false
     @State private var isPuzzleEndBannerVisible = false
     @State private var saveLoadTask: Task<Void, Never>?
     private var appearanceMode: AppearanceMode {
@@ -245,8 +245,8 @@ struct ContentView: View {
                 showDeleteAllSavesConfirmation = true
             }
             .onReceive(NotificationCenter.default.publisher(for: .debugAchievementUnlocked)) { notification in
-                guard let id = notification.object as? AchievementID else { return }
-                enqueueCelebrations([id])
+                guard let ids = notification.object as? [AchievementID] else { return }
+                enqueueCelebrations(ids)
             }
             .onReceive(NotificationCenter.default.publisher(for: .debugTriggerPulse)) { notification in
                 guard let kind = notification.object as? DebugPulseKind else { return }
@@ -323,9 +323,7 @@ struct ContentView: View {
 
     /// Loading blocks win/loss; end banner is optional until dismissed (sidebar stays usable).
     private var gameOverlayPhase: GameOverlayPhase? {
-        if let loadingMessage {
-            return .loading(loadingMessage)
-        }
+        if isLoadingPuzzle { return nil }
         guard isPuzzleEndBannerVisible else { return nil }
         switch game?.outcome {
         case .won:
@@ -413,7 +411,7 @@ struct ContentView: View {
                     kind: kind,
                     onCancel: { pendingProgressReset = nil },
                     onConfirm: {
-                        ProgressResetKind.perform(kind)
+                        performProgressReset(kind)
                         pendingProgressReset = nil
                     }
                 )
@@ -556,6 +554,7 @@ struct ContentView: View {
             onNewGame: handleNewGameFromSidebar,
             onSelectSave: selectSaveFromSidebar,
             onArchiveSave: archiveSave,
+            onDeleteSave: deleteSave,
             savePendingArchive: $savePendingArchive,
             pendingProgressReset: $pendingProgressReset
         )
@@ -580,24 +579,29 @@ struct ContentView: View {
     private var detailColumn: some View {
         ZStack {
             homeView
-                .opacity(isInGame ? 0 : 1)
-                .allowsHitTesting(!isInGame)
+                .opacity(isInGame || isLoadingPuzzle ? 0 : 1)
+                .allowsHitTesting(!isInGame && !isLoadingPuzzle)
             if let game, let saveID = activeSaveID {
                 activeGameView(game: game, saveID: saveID)
-                    .opacity(isInGame ? 1 : 0)
-                    .allowsHitTesting(isInGame)
+                    .opacity(isInGame && !isLoadingPuzzle ? 1 : 0)
+                    .allowsHitTesting(isInGame && !isLoadingPuzzle)
+            }
+            if isLoadingPuzzle {
+                LoadingPuzzleSkeleton()
+                    .transition(.opacity)
             }
         }
         .animation(detailNavigationAnimation, value: isInGame)
+        .animation(.easeInOut(duration: 0.2), value: isLoadingPuzzle)
         .overlay {
             GameOverlayHost(
                 phase: gameOverlayPhase,
-                achievement: activeCelebration,
+                achievements: activeCelebrations,
                 formattedElapsed: puzzleTimer.formattedElapsed,
                 buttonTint: appAccent.prominentTint,
                 colorScheme: resolvedColorScheme,
                 onDismissAchievement: {
-                    activeCelebration = nil
+                    activeCelebrations = []
                     presentNextCelebration()
                 },
                 onDismissPuzzleEnd: dismissPuzzleEndBanner,
@@ -826,11 +830,11 @@ struct ContentView: View {
     ) async {
         let needsGeneration = preparedTemplate == nil
         if needsGeneration {
-            loadingMessage = "Generating puzzle…"
+            isLoadingPuzzle = true
         }
         defer {
             if needsGeneration {
-                loadingMessage = nil
+                isLoadingPuzzle = false
             }
         }
 
@@ -919,8 +923,8 @@ struct ContentView: View {
             return
         }
 
-        loadingMessage = "Loading game…"
-        defer { loadingMessage = nil }
+        isLoadingPuzzle = true
+        defer { isLoadingPuzzle = false }
 
         let outgoing = captureOutgoingSave(excluding: id)
 
@@ -1125,16 +1129,19 @@ struct ContentView: View {
         persistCurrentGame()
     }
 
+    /// Achievements unlocked by a single event are shown together in one modal; separate
+    /// events queue as their own batches.
     private func enqueueCelebrations(_ ids: [AchievementID]) {
         guard !ids.isEmpty else { return }
-        celebrationQueue.append(contentsOf: ids)
+        let ordered = AchievementID.displayOrder.filter(ids.contains)
+        celebrationQueue.append(ordered)
         presentNextCelebration()
     }
 
     private func presentNextCelebration() {
-        guard activeCelebration == nil, !celebrationQueue.isEmpty else { return }
+        guard activeCelebrations.isEmpty, !celebrationQueue.isEmpty else { return }
         withAnimation(.spring(response: 0.42, dampingFraction: 0.78)) {
-            activeCelebration = celebrationQueue.removeFirst()
+            activeCelebrations = celebrationQueue.removeFirst()
         }
     }
 
@@ -1236,6 +1243,48 @@ struct ContentView: View {
                 saveSlots = slots
             }
         }
+    }
+
+    /// Resets progress defaults, then performs any save-file side effects that need active-game cleanup.
+    private func performProgressReset(_ kind: ProgressResetKind) {
+        ProgressResetKind.perform(kind)
+        switch kind {
+        case .all:
+            SaveLoadWork.deleteAll()
+        case .archivedGames:
+            deleteArchivedSaves()
+        case .statistics, .achievements:
+            break
+        }
+    }
+
+    private func deleteSave(id: UUID) {
+        let wasActiveGame = activeSaveID == id && isInGame
+        if lastFocusedSaveIDString == id.uuidString {
+            lastFocusedSaveIDString = ""
+        }
+        SaveLoadWork.delete(id: id)
+        if wasActiveGame {
+            withAnimation(detailNavigationAnimation) {
+                clearActiveGameState()
+            }
+        }
+        refreshSaveSlotsInBackground()
+    }
+
+    private func deleteArchivedSaves() {
+        let activeIsArchived = isInGame
+            && (saveSlots.first { $0.id == activeSaveID }?.isArchived ?? false)
+        if activeIsArchived, let activeSaveID {
+            if lastFocusedSaveIDString == activeSaveID.uuidString {
+                lastFocusedSaveIDString = ""
+            }
+            withAnimation(detailNavigationAnimation) {
+                clearActiveGameState()
+            }
+        }
+        SaveLoadWork.deleteArchived()
+        refreshSaveSlotsInBackground()
     }
 
     private func archiveSave(id: UUID) {

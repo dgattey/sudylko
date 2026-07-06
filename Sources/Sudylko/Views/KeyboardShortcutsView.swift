@@ -29,6 +29,7 @@ struct KeyboardShortcutsView: View {
         }
         .padding(24)
         .frame(width: 580)
+        .sudylkoModalSurface()
         #endif
     }
 

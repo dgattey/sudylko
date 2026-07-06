@@ -71,6 +71,7 @@ enum SidebarPanel: String, CaseIterable, Identifiable, Hashable {
 enum ProgressResetKind: String, Identifiable {
     case statistics
     case achievements
+    case archivedGames
     case all
 
     var id: String { rawValue }
@@ -79,6 +80,7 @@ enum ProgressResetKind: String, Identifiable {
         switch self {
         case .statistics: "Reset statistics?"
         case .achievements: "Reset achievements?"
+        case .archivedGames: "Delete archived games?"
         case .all: "Reset all progress?"
         }
     }
@@ -89,8 +91,10 @@ enum ProgressResetKind: String, Identifiable {
             "Clears lifetime win/loss counts, times, and charts. Saved games are not deleted."
         case .achievements:
             "Locks every achievement again. Statistics are kept."
+        case .archivedGames:
+            "Permanently deletes every archived game. Statistics and achievements are kept."
         case .all:
-            "Clears all statistics and locks every achievement. Saved games are not deleted."
+            "Clears all statistics, locks every achievement, and deletes all saved games."
         }
     }
 
@@ -98,10 +102,13 @@ enum ProgressResetKind: String, Identifiable {
         switch self {
         case .statistics: "Reset statistics"
         case .achievements: "Reset achievements"
+        case .archivedGames: "Delete archived"
         case .all: "Reset all"
         }
     }
 
+    /// Resets the progress-defaults portion of a kind. Save-file side effects are handled by the
+    /// caller (it owns the active-game/UI state).
     static func perform(_ kind: ProgressResetKind) {
         switch kind {
         case .statistics:
@@ -110,6 +117,8 @@ enum ProgressResetKind: String, Identifiable {
             AchievementStore.resetUnlocks()
         case .all:
             AchievementStore.resetAllProgress()
+        case .archivedGames:
+            break
         }
     }
 }
