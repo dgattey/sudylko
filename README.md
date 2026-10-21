@@ -106,9 +106,9 @@ DESTINATION='platform=iOS Simulator,name=iPhone 15' ./scripts/build-ios.sh
 |------|--------|-----|
 | Entry | `SudylkoApp.swift` + app delegate | `SudylkoApp+iOS.swift` |
 | Keyboard play | `BoardKeyboardHost` (digits, undo, space) | On-screen number pad |
-| Home progress | Trailing `.inspector` | Sheet with `HomeProgressPaneView` |
+| Statistics and achievements | Sidebar panel picker | Same panel picker in the **Saves** sheet |
 | Dock / menu icon | `DockIconRenderer` + `SudylkoDockTile.docktileplugin` | Not used (stubs in `DockIconRenderer+iOS.swift`) |
-| Window chrome | `WindowConfigurator`, unified toolbar | Standard navigation; sidebar collapses in-game |
+| Window chrome | `WindowConfigurator`, unified toolbar | `NavigationStack`; the sidebar opens as a **Saves** sheet |
 
 Saves, achievements, puzzle generation, and settings use the same `UserDefaults` keys on both platforms.
 
@@ -135,15 +135,15 @@ Accent and light/dark appearance affect the generated icon. Re-run `build-app.sh
 
 ### Home and game navigation
 
-Home and in-game views are siblings in a `**ZStack`**, not a `NavigationStack` push. `NavigationStack` caused a solid toolbar on home, duplicate back buttons, and the game view drawing over home content.
+Home and in-game views are siblings in a **`ZStack`**, not a `NavigationStack` push. `NavigationStack` caused a solid toolbar on home, duplicate back buttons, and the game view drawing over home content.
 
-The app shell is `NavigationSplitView`: sidebar (saves) | detail (home or active game). On home, `HomeView` fills the detail column with new-puzzle tiles and compact progress summary cards. On macOS, `ContentView` presents an attached trailing inspector via SwiftUI’s `.inspector(isPresented:content:)` (macOS 14+). On iOS, the same content appears in a sheet (`HomeProgressPresentationModifier`). The pane hosts `HomeProgressPaneView` (statistics or achievements). Summary cards toggle the pane; it closes when a game is active. See `ContentView.swift`, `HomeView.swift`, and `HomeProgressPaneView.swift`.
+The app shell is `NavigationSplitView`: sidebar (saves) | detail (home or active game). On home, `HomeView` fills the detail column with new-puzzle tiles. Statistics and achievements live in the sidebar. `SidebarPanelPicker` switches the sidebar between Games, Statistics (`PlayerStatsView`), and Achievements (`AchievementsListView`). On iOS, the same sidebar opens as a **Saves** sheet. See `ContentView.swift`, `HomeView.swift`, `AppSidebar.swift`, and `SidebarPanel.swift`.
 
 Home ↔ game transitions use a `ZStack` crossfade in `ContentView` (not `NavigationStack` push). There is a single back control in the detail toolbar while in-game.
 
 ### Toolbar
 
-The window toolbar stays hidden in all modes, including fullscreen. Use `hiddenWindowToolbar()` from `ThemedWindowToolbar.swift` on root chrome.
+The window toolbar background stays transparent in all modes, including fullscreen. In-game toolbar items (back, timer, archive, restart, settings) still show. Use `hiddenWindowToolbar()` from `ThemedWindowToolbar.swift` on root chrome.
 
 ### Accent color
 
@@ -164,7 +164,7 @@ The board and escape keyboard hosts forward ⇧? via `SudylkoKeyEvent.isShiftQue
 
 **Edit menu** keeps Delete (wired through `EditMenuDeleteController` and `AppCommandState`). Cut, Copy, Paste, Select All, AutoFill, Dictation, and Emoji & Symbols are stripped via empty `CommandGroup` replacements plus `EditMenuCleaner.prune()`.
 
-**View menu** tab-bar items are hidden with `CommandGroup(replacing: .toolbar)`.
+**View menu** tab-bar items are hidden by `NSWindow.allowsAutomaticWindowTabbing = false` in `SudylkoAppDelegate.swift`.
 
 ### Glass and materials
 
@@ -197,9 +197,13 @@ Achievement order in the UI and Debug menu is `AchievementID.displayOrder` (easi
 | Item               | Effect                                                      |
 | ------------------ | ----------------------------------------------------------- |
 | Unlock achievement | Unlocks one achievement and shows celebration               |
+| Unlock multiple    | Unlocks a sample batch or every achievement                 |
+| Pulse animation    | Plays a board pulse (puzzle complete, row, column, box, or digit) |
 | Reset achievements | Clears unlock IDs only                                      |
 | Reset stats        | Clears lifetime stats only                                  |
-| Delete all saves   | Removes all save blobs and index; returns home if in a game |
+| Reset all progress | Clears unlock IDs, lifetime stats, and all saves            |
+| Seed done game     | Adds a finished save for sidebar and end-state testing      |
+| Delete all saves   | After confirmation, removes all save blobs and index; returns home if in a game |
 
 
 ## Verifying changes
