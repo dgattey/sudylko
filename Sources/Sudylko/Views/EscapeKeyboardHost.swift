@@ -36,19 +36,8 @@ struct EscapeKeyboardHost: NSViewRepresentable {
 
         override var acceptsFirstResponder: Bool { true }
 
-        override func performKeyEquivalent(with event: NSEvent) -> Bool {
-            if SudylkoKeyEvent.isShiftQuestionMark(event) {
-                return HelpMenuShortcutController.shared.performShortcut(from: self)
-            }
-            return super.performKeyEquivalent(with: event)
-        }
-
         override func keyDown(with event: NSEvent) {
             if event.keyCode == 53, onEscape?() == true {
-                return
-            }
-            if SudylkoKeyEvent.isShiftQuestionMark(event) {
-                HelpMenuShortcutController.shared.performShortcut(from: self)
                 return
             }
             super.keyDown(with: event)

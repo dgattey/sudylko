@@ -47,7 +47,7 @@ struct SudylkoApp: App {
             }
             CommandGroup(after: .undoRedo) {
                 Button {
-                    EditMenuDeleteController.shared.deleteSelectedCell(nil)
+                    NotificationCenter.default.post(name: .deleteCell, object: nil)
                 } label: {
                     Label("Delete", systemImage: "delete.backward")
                 }
@@ -65,7 +65,7 @@ struct SudylkoApp: App {
             CommandGroup(replacing: .newItem) {}
             CommandGroup(replacing: .help) {
                 Button {
-                    HelpMenuShortcutController.shared.showKeyboardShortcuts(nil)
+                    NotificationCenter.default.post(name: .showKeyboardShortcuts, object: nil)
                 } label: {
                     Label("Keyboard Shortcuts", systemImage: "keyboard")
                 }

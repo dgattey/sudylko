@@ -3,8 +3,6 @@ import Foundation
 
 @MainActor
 final class AppCommandState: ObservableObject {
-    static weak var live: AppCommandState?
-
     @Published var canUndo = false
     @Published var canRedo = false
     @Published var canDelete = false
