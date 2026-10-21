@@ -15,33 +15,32 @@ import Foundation
     /// Sample batch resembling a first easy sub-5-minute win (shows several at once).
     private static let sampleBatch: [AchievementID] = [.firstGame, .firstVictory, .easyWin, .speedRun]
 
+    /// SwiftUI rebuilds the main menu whenever command state changes and drops top-level menus
+    /// it didn't declare, so the Debug menu is re-added after every app update.
     static func install() {
-        guard let mainMenu = NSApp.mainMenu else { return }
-        removeDuplicateDebugMenus(from: mainMenu)
-
-        let debugItem: NSMenuItem
-        if let existing = mainMenu.items.first(where: { $0.title == menuTitle }) {
-            debugItem = existing
-        } else {
-            debugItem = NSMenuItem(title: menuTitle, action: nil, keyEquivalent: "")
-            debugItem.submenu = NSMenu(title: menuTitle)
-            if let helpIndex = mainMenu.items.firstIndex(where: { $0.title == "Help" }) {
-                mainMenu.insertItem(debugItem, at: helpIndex)
-            } else {
-                mainMenu.addItem(debugItem)
-            }
+        NotificationCenter.default.addObserver(
+            forName: NSApplication.didUpdateNotification,
+            object: NSApp,
+            queue: .main
+        ) { _ in
+            insertIfMissing()
         }
-
-        guard let submenu = debugItem.submenu else { return }
-        submenu.removeAllItems()
-        populate(submenu)
+        insertIfMissing()
     }
 
-    private static func removeDuplicateDebugMenus(from mainMenu: NSMenu) {
-        let matches = mainMenu.items.filter { $0.title == menuTitle }
-        guard matches.count > 1 else { return }
-        for duplicate in matches.dropFirst() {
-            mainMenu.removeItem(duplicate)
+    private static func insertIfMissing() {
+        guard let mainMenu = NSApp.mainMenu,
+              mainMenu.items.contains(where: { $0.title == menuTitle }) == false
+        else { return }
+
+        let debugItem = NSMenuItem(title: menuTitle, action: nil, keyEquivalent: "")
+        let submenu = NSMenu(title: menuTitle)
+        populate(submenu)
+        debugItem.submenu = submenu
+        if let helpIndex = mainMenu.items.firstIndex(where: { $0.title == "Help" }) {
+            mainMenu.insertItem(debugItem, at: helpIndex)
+        } else {
+            mainMenu.addItem(debugItem)
         }
     }
 

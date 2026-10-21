@@ -285,7 +285,6 @@ struct ContentView: View {
     private var appChromeWithLifecycle: some View {
         appChromeWithSheets
             .onAppear {
-                AppCommandState.live = appCommands
                 appAccent.refresh()
                 performInitialSetup()
             }

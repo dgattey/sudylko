@@ -60,13 +60,11 @@ struct BoardKeyboardHost: NSViewRepresentable {
         }
 
         override func performKeyEquivalent(with event: NSEvent) -> Bool {
-            if SudylkoKeyEvent.isShiftQuestionMark(event) {
-                return HelpMenuShortcutController.shared.performShortcut(from: self)
-            }
             if Self.isDeleteKey(event) {
-                return EditMenuDeleteController.shared.performDelete(from: self)
+                NotificationCenter.default.post(name: .deleteCell, object: nil)
+                return true
             }
-            if SudylkoKeyEvent.isSpace(event) {
+            if Self.isSpace(event) {
                 let handled: Bool
                 if Thread.isMainThread {
                     handled = MainActor.assumeIsolated { handleTogglePauseKey() }
@@ -111,7 +109,7 @@ struct BoardKeyboardHost: NSViewRepresentable {
                 return true
             }
 
-            if SudylkoKeyEvent.isSpace(event), handleTogglePauseKey() {
+            if Self.isSpace(event), handleTogglePauseKey() {
                 return true
             }
 
@@ -125,10 +123,6 @@ struct BoardKeyboardHost: NSViewRepresentable {
                 guard game.isInputEnabled, !game.isPuzzleEnded else { return false }
                 game.keyboardClearSelected()
                 return true
-            }
-
-            if SudylkoKeyEvent.isShiftQuestionMark(event) {
-                return HelpMenuShortcutController.shared.performShortcut(from: self)
             }
 
             if let digit = Self.digit(from: event) {
@@ -168,6 +162,14 @@ struct BoardKeyboardHost: NSViewRepresentable {
             case "d": return (0, 1)
             default: return nil
             }
+        }
+
+        private static func isSpace(_ event: NSEvent) -> Bool {
+            guard event.keyCode == 49 else { return false }
+            let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+            return !flags.contains(.command)
+                && !flags.contains(.control)
+                && !flags.contains(.option)
         }
 
         private static func isClearKey(_ event: NSEvent) -> Bool {

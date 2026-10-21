@@ -6,7 +6,18 @@ import SwiftUI
 final class SudylkoAppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillFinishLaunching(_ notification: Notification) {
         if runIconExportIfRequested() { return }
-        EditMenuCleaner.disableSystemInjectedItems()
+        disableSystemInjectedEditMenuItems()
+    }
+
+    /// AppKit appends Start Dictation and Emoji & Symbols to any menu titled Edit, and SwiftUI
+    /// `commands` cannot remove them. These defaults keys stop AppKit from adding them; the
+    /// AutoFill key turns off text-field AutoFill heuristics.
+    private func disableSystemInjectedEditMenuItems() {
+        UserDefaults.standard.set(true, forKey: "NSDisabledDictationMenuItem")
+        UserDefaults.standard.set(true, forKey: "NSDisabledCharacterPaletteMenuItem")
+        UserDefaults.standard.register(defaults: [
+            "NSAutoFillHeuristicControllerEnabled": false,
+        ])
     }
 
     /// Build-time icon export (`scripts/generate-app-icon.sh`) — same renderer as the live Dock tile.
@@ -36,31 +47,11 @@ final class SudylkoAppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         DockIconRenderer.applySavedAccentDockArtwork()
         NSWindow.allowsAutomaticWindowTabbing = false
-        DispatchQueue.main.async {
-            EditMenuCleaner.prune()
-            HelpMenuShortcutController.installHelpMenuKeyEquivalent()
-            #if DEBUG
-            DebugMenuController.install()
-            #endif
-        }
-    }
-
-    func applicationDidBecomeActive(_ notification: Notification) {
-        EditMenuCleaner.prune()
-        HelpMenuShortcutController.installHelpMenuKeyEquivalent()
         #if DEBUG
-        DebugMenuController.install()
-        #endif
-    }
-
-    func applicationWillUpdate(_ notification: Notification) {
         DispatchQueue.main.async {
-            EditMenuCleaner.prune()
-            HelpMenuShortcutController.installHelpMenuKeyEquivalent()
-            #if DEBUG
             DebugMenuController.install()
-            #endif
         }
+        #endif
     }
 
     func applicationWillTerminate(_ notification: Notification) {

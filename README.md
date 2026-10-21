@@ -158,11 +158,11 @@ Sheets and popovers need the propagation modifier or explicit environment if the
 
 SwiftUI `commands` define Settings, Undo/Redo, Delete, Sidebar, and Help. Many actions post `Notification.Name` values from `Notifications.swift` so `ContentView` can react without tight coupling.
 
-**Help → Keyboard Shortcuts** uses ⇧? (Shift + `/` on US QWERTY). SwiftUI often rebuilds AppKit menus and clears key equivalents. `HelpMenuShortcutController` re-applies the shortcut on launch, activation, and each `applicationWillUpdate` in `SudylkoAppDelegate.swift`.
+**Help → Keyboard Shortcuts** uses ⇧? (Shift + `/` on US QWERTY), declared with `.keyboardShortcut("?", modifiers: .shift)`.
 
-The board and escape keyboard hosts forward ⇧? via `SudylkoKeyEvent.isShiftQuestionMark` so the game does not swallow the shortcut.
+**Edit menu** keeps Delete (enabled from `AppCommandState`). Cut, Copy, Paste, and Select All are removed with empty `CommandGroup` replacements. Dictation and Emoji & Symbols are added by AppKit itself, so `SudylkoAppDelegate` turns them off with defaults keys at launch.
 
-**Edit menu** keeps Delete (wired through `EditMenuDeleteController` and `AppCommandState`). Cut, Copy, Paste, Select All, AutoFill, Dictation, and Emoji & Symbols are stripped via empty `CommandGroup` replacements plus `EditMenuCleaner.prune()`.
+**Debug menu** (debug builds) is built in AppKit by `DebugMenuController`. SwiftUI drops it whenever it rebuilds the main menu, so the controller re-adds it after each app update.
 
 **View menu** tab-bar items are hidden by `NSWindow.allowsAutomaticWindowTabbing = false` in `SudylkoAppDelegate.swift`.
 
