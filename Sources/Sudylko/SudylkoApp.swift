@@ -10,7 +10,7 @@ struct SudylkoApp: App {
 
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            ContentView(appAccent: appAccent)
                 .environmentObject(appCommands)
                 .environmentObject(appAccent)
                 .appAccentPropagation(appAccent)
