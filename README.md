@@ -19,7 +19,8 @@ Sudylko is a [DylKit](https://github.com/dgattey/dyl-kit) app: one SwiftPM execu
 | `scripts/generate-icon.swift` | Draws the app icon into `build/` for the bundler |
 | `scripts/generate-sparkle-key.sh` | One-time Sparkle key pair setup |
 | `server/` | The download site at sudylko.gattey.com, built on `@dylkit/web` |
-| `run` | DylKit's entry point (`./run dev …`, `./run release …`), written by `./run dev sync` |
+| `run` | DylKit's entry point (`./run dev …`, `./run release …`, `./run lint`) |
+| `.github/workflows/dylkit.yml` | Calls DylKit's PR check and release workflow at the pinned DylKit version |
 
 ## Building, running and checking
 
@@ -29,7 +30,7 @@ The **Debug** menu (unlock achievements, reset stats, delete all saves) and othe
 
 ## Releasing
 
-Merging a PR to `main` releases Sudylko: the PR template's Release info box picks the version bump, and the `release` workflow builds, signs, and uploads it with its Sparkle feed. See DylKit's [`apple-release`](https://github.com/dgattey/dyl-kit/blob/main/skills/apple-release/SKILL.md) skill.
+Merging a PR to `main` releases Sudylko: the PR template's Release info box picks the version bump, and the `dylkit` workflow builds, signs, and uploads it with its Sparkle feed. DylKit is pinned three times to one version: `Package.swift`, the `@dylkit/web` tarball in `server/package.json`, and the `@v<version>` in `dylkit.yml`. A DylKit bump changes all three. See DylKit's [`apple-release`](https://github.com/dgattey/dyl-kit/blob/main/skills/apple-release/SKILL.md) skill.
 
 ### iOS vs macOS behavior
 
