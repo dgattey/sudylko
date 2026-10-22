@@ -1,4 +1,6 @@
+import DylCore
 import Foundation
+import os
 
 struct SavedGameState: Codable, Equatable, Identifiable, Sendable {
     var id: UUID
@@ -227,35 +229,27 @@ struct SaveSlotSummary: Identifiable, Equatable {
 
 enum GameSaveStore {
     private static let indexKey = "savedGameIDs"
-    private static let cacheLock = NSLock()
-    private static var decodedCache: [UUID: SavedGameState] = [:]
+    /// Saves load from detached tasks and write from `SaveLoadWork`'s queue.
+    private static let decodedCache = OSAllocatedUnfairLock(initialState: [UUID: SavedGameState]())
 
     private static func storageKey(for id: UUID) -> String {
         "savedGame.\(id.uuidString)"
     }
 
     private static func cacheRead(id: UUID) -> SavedGameState? {
-        cacheLock.lock()
-        defer { cacheLock.unlock() }
-        return decodedCache[id]
+        decodedCache.withLock { $0[id] }
     }
 
     private static func cacheWrite(_ state: SavedGameState) {
-        cacheLock.lock()
-        decodedCache[state.id] = state
-        cacheLock.unlock()
+        decodedCache.withLock { $0[state.id] = state }
     }
 
     private static func cacheRemove(id: UUID) {
-        cacheLock.lock()
-        decodedCache.removeValue(forKey: id)
-        cacheLock.unlock()
+        _ = decodedCache.withLock { $0.removeValue(forKey: id) }
     }
 
     private static func cacheClear() {
-        cacheLock.lock()
-        decodedCache.removeAll()
-        cacheLock.unlock()
+        decodedCache.withLock { $0.removeAll() }
     }
 
     private static func loadIndex() -> [UUID] {
@@ -284,7 +278,7 @@ enum GameSaveStore {
         if Thread.isMainThread {
             NotificationCenter.default.post(name: .savesDidChange, object: reason)
         } else {
-            DispatchQueue.main.async {
+            Task { @MainActor in
                 NotificationCenter.default.post(name: .savesDidChange, object: reason)
             }
         }
@@ -295,7 +289,7 @@ enum GameSaveStore {
             return cached
         }
         guard let data = UserDefaults.standard.data(forKey: storageKey(for: id)),
-              let state = try? JSONDecoder().decode(SavedGameState.self, from: data) else {
+              let state = JSONDecoder().decodeOrLog(SavedGameState.self, from: data) else {
             return nil
         }
         cacheWrite(state)

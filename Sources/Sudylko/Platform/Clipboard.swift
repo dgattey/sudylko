@@ -6,6 +6,7 @@ import AppKit
 import UIKit
 #endif
 
+@MainActor
 enum Clipboard {
     static func copy(_ string: String) {
         #if os(macOS)

@@ -1,13 +1,11 @@
 import SwiftUI
 
 struct GamePlayView: View {
-    @ObservedObject var game: GameViewModel
-    @ObservedObject var timer: PuzzleTimer
+    let game: GameViewModel
+    let timer: PuzzleTimer
     var onGoHome: () -> Void
     /// Return `true` when Escape was handled (modal, settings, etc.).
     var onEscape: () -> Bool
-
-    @Binding var showSettings: Bool
 
     @Environment(\.appAccent) private var accent
     @Environment(\.colorScheme) private var colorScheme

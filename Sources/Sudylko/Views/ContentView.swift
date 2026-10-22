@@ -1,3 +1,5 @@
+import DylCore
+import DylUI
 import SwiftUI
 #if os(macOS)
 import AppKit
@@ -6,19 +8,20 @@ import AppKit
 /// Window root: navigation chrome, detail-column modals, settings, and platform lifecycle.
 /// Game and save state live in `GameSessionModel`.
 struct ContentView: View {
-    @EnvironmentObject private var appCommands: AppCommandState
+    @Environment(AppCommandState.self) private var appCommands
 #if os(iOS)
     @Environment(\.scenePhase) private var scenePhase
+#else
+    @Environment(\.openWindow) private var openWindow
 #endif
-    @EnvironmentObject private var appAccent: AppAccentModel
+    @Environment(AppAccentModel.self) private var appAccent
     @AppStorage("appearanceMode") private var appearanceRaw = AppearanceMode.system.rawValue
     @AppStorage("puzzleFontStyle") private var fontStyleRaw = PuzzleFontStyle.rounded.rawValue
     @AppStorage("revealMistakesImmediately") private var revealMistakesImmediately = false
     @AppStorage("impossibleMode") private var impossibleMode = false
-    @StateObject private var session: GameSessionModel
-    @StateObject private var customPuzzlePrep = CustomPuzzlePrepModel()
+    @Bindable var session: GameSessionModel
+    @State private var customPuzzlePrep = CustomPuzzlePrepModel()
     @State private var modals = DetailModals()
-    @State private var showSettings = false
     @State private var isAppActive = true
     @State private var isWindowMiniaturized = false
     @State private var isWindowFullscreen = false
@@ -26,13 +29,10 @@ struct ContentView: View {
     @State private var systemColorScheme = AppearanceMode.systemColorScheme()
     #if os(iOS)
     @State private var showSavesSheet = false
+    @State private var showSettings = false
     #else
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
     #endif
-
-    init(appAccent: AppAccentModel) {
-        _session = StateObject(wrappedValue: GameSessionModel(appAccent: appAccent))
-    }
 
     private var appearanceMode: AppearanceMode {
         AppearanceMode(rawValue: appearanceRaw) ?? .system
@@ -98,6 +98,9 @@ struct ContentView: View {
         rootChrome { platformRootCore }
             #if os(iOS)
             .sheet(isPresented: $showSavesSheet) { savesSheet }
+            .sheet(isPresented: $showSettings) {
+                SudylkoSettings(appAccent: appAccent, appCommands: appCommands)
+            }
             #endif
         #if os(iOS)
             .onChange(of: scenePhase) { _, phase in
@@ -114,7 +117,7 @@ struct ContentView: View {
             .onChange(of: isAppActive) { _, active in
                 session.appActivityChanged(isActive: active, holdAutoPause: shouldHoldAutoPause)
             }
-            .onChange(of: showSettings) { _, _ in
+            .onChange(of: appCommands.isSettingsOpen) { _, _ in
                 scheduleAutoPauseInterruptUpdate()
             }
             .onChange(of: isWindowMiniaturized) { _, _ in
@@ -140,9 +143,6 @@ struct ContentView: View {
             }
             .onReceive(NotificationCenter.default.publisher(for: .sudylkoSystemThemeDidChange)) { _ in
                 handleSystemThemeDidChange()
-            }
-            .onReceive(NotificationCenter.default.publisher(for: .openSettings)) { _ in
-                showSettings.toggle()
             }
             .onReceive(NotificationCenter.default.publisher(for: .toggleSidebar)) { _ in
                 toggleSidebar()
@@ -283,8 +283,7 @@ struct ContentView: View {
                     game: game,
                     timer: session.puzzleTimer,
                     onGoHome: goHome,
-                    onEscape: handleEscape,
-                    showSettings: $showSettings
+                    onEscape: handleEscape
                 )
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .opacity(isInGame && !isLoadingPuzzle ? 1 : 0)
@@ -326,8 +325,7 @@ struct ContentView: View {
                 gameOutcome: isInGame ? session.game?.outcome : nil,
                 timer: session.puzzleTimer,
                 isArchived: session.activeSaveMetadata?.isArchived == true,
-                colorScheme: resolvedColorScheme,
-                showSettings: $showSettings,
+                onOpenSettings: openSettings,
                 onGoHome: goHome,
                 onArchive: archiveActiveGame,
                 onRestart: restartActiveGame,
@@ -433,17 +431,21 @@ struct ContentView: View {
         }
     }
 
-    /// Escape dismisses a modal, then settings, before the game view's own handling.
+    /// Escape dismisses a modal before the game view's own handling.
     private func handleEscape() -> Bool {
         if modals.isPresented {
             modals.dismissAll()
             return true
         }
-        if showSettings {
-            showSettings = false
-            return true
-        }
         return false
+    }
+
+    private func openSettings() {
+        #if os(iOS)
+        showSettings = true
+        #else
+        openWindow(id: SettingsWindow.id)
+        #endif
     }
 
     private func toggleSidebar() {
@@ -472,10 +474,24 @@ struct ContentView: View {
         isAppActive = scenePhase == .active
         #endif
         session.updateDockIcon()
+        openInitialView()
+    }
+
+    /// devkit's `--initial-view`. `SettingsView` reads the `settings/<page>` part itself.
+    private func openInitialView() {
+        guard let view = LaunchOverrides.current.initialView else { return }
+        switch InitialView(rawValue: view.split(separator: "/").first.map(String.init) ?? view) {
+        case .game:
+            session.startNewGame(difficulty: session.lastFocusedDifficulty)
+        case .settings:
+            openSettings()
+        case nil:
+            break
+        }
     }
 
     private var shouldHoldAutoPause: Bool {
-        !isAppActive || showSettings || isWindowMiniaturized
+        !isAppActive || appCommands.isSettingsOpen || isWindowMiniaturized
     }
 
     /// Avoid pausing/resuming the timer during an in-flight SwiftUI layout pass.
@@ -510,4 +526,10 @@ struct ContentView: View {
     private func syncSystemColorSchemeFromPlatform() {
         systemColorScheme = AppearanceMode.systemColorScheme()
     }
+}
+
+/// The screens `--initial-view` names, so a dev launch can open one without clicking through the UI.
+private enum InitialView: String {
+    case game
+    case settings
 }

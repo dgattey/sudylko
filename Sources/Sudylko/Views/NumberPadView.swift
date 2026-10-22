@@ -12,7 +12,7 @@ enum NumberPadStyle {
 }
 
 struct NumberPadView: View {
-    @ObservedObject var game: GameViewModel
+    let game: GameViewModel
     let style: NumberPadStyle
     var maxWidth: CGFloat
     var maxHeight: CGFloat = .infinity

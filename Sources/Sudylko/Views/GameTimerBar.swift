@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct GameTimerBar: View {
-    @ObservedObject var timer: PuzzleTimer
+    let timer: PuzzleTimer
     let isPuzzleEnded: Bool
     let endedLabel: String?
     let endedLabelColor: Color

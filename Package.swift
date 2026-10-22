@@ -1,4 +1,4 @@
-// swift-tools-version: 5.9
+// swift-tools-version: 6.0
 import PackageDescription
 
 let package = Package(
@@ -9,38 +9,27 @@ let package = Package(
     ],
     products: [
         .executable(name: "Sudylko", targets: ["Sudylko"]),
-        .library(name: "SudylkoDockTilePlugin", type: .dynamic, targets: ["SudylkoDockTilePlugin"]),
+    ],
+    dependencies: [
+        .package(url: "https://github.com/dgattey/dyl-kit", from: "0.2.1"),
     ],
     targets: [
-        .target(
-            name: "SudylkoShared",
-            path: "Sources/SudylkoShared"
-        ),
         .executableTarget(
             name: "Sudylko",
-            dependencies: ["SudylkoShared"],
+            dependencies: [
+                .product(name: "DylCore", package: "dyl-kit"),
+                .product(name: "DylUI", package: "dyl-kit"),
+                .product(name: "DylUpdates", package: "dyl-kit"),
+            ],
             path: "Sources/Sudylko"
         ),
         .testTarget(
             name: "SudylkoLogicTests",
-            dependencies: ["Sudylko"],
+            dependencies: [
+                "Sudylko",
+                .product(name: "DylTestSupport", package: "dyl-kit"),
+            ],
             path: "Tests/SudylkoLogicTests"
-        ),
-        .target(
-            name: "SudylkoDockTilePlugin",
-            dependencies: ["SudylkoShared"],
-            path: "Sources/SudylkoDockTilePlugin",
-            linkerSettings: [
-                .linkedFramework("AppKit", .when(platforms: [.macOS])),
-                .unsafeFlags(
-                    [
-                        "-Xlinker", "-bundle",
-                        "-Xlinker", "-undefined",
-                        "-Xlinker", "dynamic_lookup",
-                    ],
-                    .when(platforms: [.macOS])
-                ),
-            ]
         ),
     ]
 )

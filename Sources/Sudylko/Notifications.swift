@@ -5,7 +5,6 @@ enum SavesChangeReason {
 }
 
 extension Notification.Name {
-    static let openSettings = Notification.Name("SudylkoOpenSettings")
     static let sudylkoSystemThemeDidChange = Notification.Name("SudylkoSystemThemeDidChange")
     static let toggleSidebar = Notification.Name("SudylkoToggleSidebar")
     static let showKeyboardShortcuts = Notification.Name("SudylkoShowKeyboardShortcuts")

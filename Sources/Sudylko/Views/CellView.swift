@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct CellView: View {
-    @ObservedObject var game: GameViewModel
+    let game: GameViewModel
     let index: CellIndex
     let cellSize: CGFloat
     @Environment(\.puzzleFontStyle) private var puzzleFontStyle

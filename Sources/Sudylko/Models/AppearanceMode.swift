@@ -1,3 +1,4 @@
+import DylCore
 import SwiftUI
 #if canImport(AppKit)
 import AppKit
@@ -40,8 +41,13 @@ enum AppearanceMode: String, CaseIterable, Identifiable {
     }
     #endif
 
+    /// devkit's `--appearance` stands in for the system appearance, so captures of a fresh dev build follow it.
+    @MainActor
     static func systemColorScheme() -> ColorScheme {
-        PlatformColor.systemColorScheme()
+        if let forced = LaunchOverrides.current.appearance {
+            return forced == .dark ? .dark : .light
+        }
+        return PlatformColor.systemColorScheme()
     }
 
     static let systemThemeDidChangeNotification = Notification.Name(

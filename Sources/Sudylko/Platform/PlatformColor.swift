@@ -8,6 +8,7 @@ import UIKit
 #endif
 
 enum PlatformColor {
+    @MainActor
     static func systemColorScheme() -> ColorScheme {
         #if os(macOS)
         // Prefer the game window’s effective appearance — NSApp can lag after we clear a forced theme.

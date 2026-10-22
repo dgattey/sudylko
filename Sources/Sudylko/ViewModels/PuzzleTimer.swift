@@ -1,15 +1,16 @@
-import Combine
 import Foundation
+import Observation
 
+@Observable
 @MainActor
-final class PuzzleTimer: ObservableObject {
-    @Published private(set) var elapsed: TimeInterval = 0
-    @Published private(set) var isPaused = false
-    @Published private(set) var isRunning = false
+final class PuzzleTimer {
+    private(set) var elapsed: TimeInterval = 0
+    private(set) var isPaused = false
+    private(set) var isRunning = false
 
-    private var accumulated: TimeInterval = 0
-    private var segmentStart: Date?
-    private var ticker: Timer?
+    @ObservationIgnored private var accumulated: TimeInterval = 0
+    @ObservationIgnored private var segmentStart: Date?
+    @ObservationIgnored private var ticker: Task<Void, Never>?
 
     var formattedElapsed: String {
         Self.format(elapsed)
@@ -94,17 +95,23 @@ final class PuzzleTimer: ObservableObject {
         self.segmentStart = nil
     }
 
+    /// Ticks only while a segment runs; `stopTicker` cancels the sleep.
     private func startTicker() {
         stopTicker()
-        ticker = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
-            Task { @MainActor in
+        ticker = Task { [weak self] in
+            while true {
+                do {
+                    try await Task.sleep(for: .seconds(1))
+                } catch {
+                    return
+                }
                 self?.refreshElapsed()
             }
         }
     }
 
     private func stopTicker() {
-        ticker?.invalidate()
+        ticker?.cancel()
         ticker = nil
     }
 

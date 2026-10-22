@@ -1,12 +1,12 @@
-import Combine
-import SudylkoShared
+import Observation
 import SwiftUI
 
 /// The window's play session: which save is open, its live game and timer, the sidebar's save
 /// list, and the achievement celebrations it unlocks. `ContentView` owns the window chrome and
 /// modals and forwards platform events (activity, settings, appearance) here.
+@Observable
 @MainActor
-final class GameSessionModel: ObservableObject {
+final class GameSessionModel {
     private enum Keys {
         static let lastDifficulty = "lastDifficulty"
         static let lastFocusedSaveID = "lastFocusedSaveID"
@@ -16,31 +16,26 @@ final class GameSessionModel: ObservableObject {
 
     static let navigationAnimation: Animation = .easeInOut(duration: 0.25)
 
-    @Published private(set) var game: GameViewModel?
+    private(set) var game: GameViewModel?
     /// Bound by the sidebar; `ContentView` routes changes to `handleActiveSaveIDChange`.
-    @Published var activeSaveID: UUID?
+    var activeSaveID: UUID?
     /// Avoids re-reading the active save from disk when persisting on switch.
-    @Published private(set) var activeSaveMetadata: SavePersistMetadata?
-    @Published private(set) var saveSlots: [SaveSlotSummary] = []
-    @Published private(set) var activeCelebrations: [AchievementID] = []
-    @Published private(set) var isLoadingPuzzle = false
-    @Published private(set) var isPuzzleEndBannerVisible = false
+    private(set) var activeSaveMetadata: SavePersistMetadata?
+    private(set) var saveSlots: [SaveSlotSummary] = []
+    private(set) var activeCelebrations: [AchievementID] = []
+    private(set) var isLoadingPuzzle = false
+    private(set) var isPuzzleEndBannerVisible = false
 
     let puzzleTimer = PuzzleTimer()
 
-    private let appAccent: AppAccentModel
-    private let randomPuzzlePrep = RandomPuzzlePrepCache()
-    private var celebrationQueue: [[AchievementID]] = []
-    private var autoPausedForInactive = false
-    private var saveLoadTask: Task<Void, Never>?
-    private var timerChanges: AnyCancellable?
+    @ObservationIgnored private let appAccent: AppAccentModel
+    @ObservationIgnored private let randomPuzzlePrep = RandomPuzzlePrepCache()
+    @ObservationIgnored private var celebrationQueue: [[AchievementID]] = []
+    @ObservationIgnored private var autoPausedForInactive = false
+    @ObservationIgnored private var saveLoadTask: Task<Void, Never>?
 
     init(appAccent: AppAccentModel) {
         self.appAccent = appAccent
-        // Views render the timer through this model, so its ticks re-render them too.
-        timerChanges = puzzleTimer.objectWillChange.sink { [weak self] _ in
-            self?.objectWillChange.send()
-        }
     }
 
     var isInGame: Bool {

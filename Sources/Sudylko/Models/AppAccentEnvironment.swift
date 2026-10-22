@@ -1,5 +1,4 @@
 import SwiftUI
-import SudylkoShared
 
 private struct AppAccentColorKey: EnvironmentKey {
     static let defaultValue: AppAccentColor = .blue
@@ -34,7 +33,7 @@ extension EnvironmentValues {
 
 /// Pushes accent + SwiftUI `tint` into the environment for this hierarchy and presentations (sheets, popovers).
 struct AppAccentPropagationModifier: ViewModifier {
-    @ObservedObject var appAccent: AppAccentModel
+    let appAccent: AppAccentModel
 
     func body(content: Content) -> some View {
         content

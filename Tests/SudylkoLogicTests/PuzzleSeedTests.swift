@@ -18,6 +18,7 @@ final class PuzzleSeedTests: XCTestCase {
         XCTAssertEqual(PuzzleSeed.sanitizedInput("8979912345"), "89799")
     }
 
+    @MainActor
     func testPrefillFromClipboardAcceptsHashInPasteboard() {
         Clipboard.copy("#89799")
         let prefill = PuzzleSeed.prefillFromClipboard(defaultDifficulty: .hard)
