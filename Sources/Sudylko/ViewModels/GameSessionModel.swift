@@ -77,9 +77,7 @@ final class GameSessionModel {
     /// Yields to any game started or selected first, such as `--initial-view game`, whichever finishes loading first.
     private func restoreLastSessionIfNeeded() async {
         guard !hasRequestedGame, let id = UUID(uuidString: lastFocusedSaveIDString) else { return }
-        let state = await Task.detached(priority: .utility) {
-            SaveLoadWork.load(id: id)
-        }.value
+        let state = await SaveLoadWork.load(id: id)
         guard !hasRequestedGame else { return }
         guard let state else {
             lastFocusedSaveIDString = ""
@@ -300,16 +298,10 @@ final class GameSessionModel {
         isLoadingPuzzle = true
         defer { isLoadingPuzzle = false }
 
-        let outgoing = captureOutgoingSave(excluding: id)
-
-        async let incoming = Task.detached(priority: .userInitiated) {
-            SaveLoadWork.restorePayload(saveID: id)
-        }
-        if let outgoing {
+        if let outgoing = captureOutgoingSave(excluding: id) {
             SaveLoadWork.enqueueSave(outgoing)
         }
-
-        let payload = await incoming.value
+        let payload = await SaveLoadWork.restorePayload(saveID: id)
 
         guard !Task.isCancelled else { return }
 
@@ -405,11 +397,8 @@ final class GameSessionModel {
     }
 
     private func refreshSaveSlotsInBackground() {
-        Task.detached(priority: .utility) {
-            let slots = SaveLoadWork.summaries()
-            await MainActor.run {
-                self.saveSlots = slots
-            }
+        Task {
+            saveSlots = await SaveLoadWork.summaries()
         }
     }
 
@@ -418,8 +407,11 @@ final class GameSessionModel {
     func handleSavesDidChange(_ notification: Notification) {
         if notification.object as? SavesChangeReason == .deleteAll {
             lastFocusedSaveIDString = ""
+            // Not `goHome`, which would save the deleted game again.
             if isInGame {
-                goHome()
+                withAnimation(Self.navigationAnimation) {
+                    clearActiveGameState()
+                }
             }
         }
         refreshSaveSlotsInBackground()
@@ -442,25 +434,21 @@ final class GameSessionModel {
     func archiveSave(id: UUID) {
         let isCurrentGame = activeSaveID == id && isInGame
 
-        Task.detached(priority: .utility) {
-            if let state = SaveLoadWork.load(id: id),
+        Task {
+            if let state = await SaveLoadWork.load(id: id),
                !state.isArchived,
                state.outcome == .playing,
                let abandoned = AchievementStore.recordAbandonedSave(difficulty: state.difficulty) {
-                await MainActor.run {
-                    self.enqueueCelebrations([abandoned])
-                }
+                enqueueCelebrations([abandoned])
             }
             SaveLoadWork.archive(id: id)
-            await MainActor.run {
-                if self.lastFocusedSaveIDString == id.uuidString {
-                    self.lastFocusedSaveIDString = ""
-                }
-                self.refreshSaveSlotsInBackground()
-                guard isCurrentGame else { return }
-                withAnimation(Self.navigationAnimation) {
-                    self.clearActiveGameState()
-                }
+            if lastFocusedSaveIDString == id.uuidString {
+                lastFocusedSaveIDString = ""
+            }
+            refreshSaveSlotsInBackground()
+            guard isCurrentGame else { return }
+            withAnimation(Self.navigationAnimation) {
+                clearActiveGameState()
             }
         }
     }

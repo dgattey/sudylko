@@ -229,7 +229,7 @@ struct SaveSlotSummary: Identifiable, Equatable {
 
 enum GameSaveStore {
     private static let indexKey = "savedGameIDs"
-    /// Saves load from detached tasks and write from `SaveLoadWork`'s queue.
+    /// Reads and writes all run on `SaveLoadWork`'s queue; the lock makes the static storage `Sendable`.
     private static let decodedCache = OSAllocatedUnfairLock(initialState: [UUID: SavedGameState]())
 
     private static func storageKey(for id: UUID) -> String {
