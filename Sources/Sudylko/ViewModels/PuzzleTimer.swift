@@ -99,13 +99,9 @@ final class PuzzleTimer {
     private func startTicker() {
         stopTicker()
         ticker = Task { [weak self] in
-            while true {
-                do {
-                    try await Task.sleep(for: .seconds(1))
-                } catch {
-                    return
-                }
-                self?.refreshElapsed()
+            while (try? await Task.sleep(for: .seconds(1))) != nil {
+                guard let self else { return }
+                self.refreshElapsed()
             }
         }
     }
