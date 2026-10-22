@@ -62,7 +62,7 @@ struct ContentView: View {
     /// `GameViewModel` isn't observed here, so the `session.game?` `onChange` checks run whenever
     /// this view re-renders (session, timer tick, or command-state changes).
     var body: some View {
-        chromeWithWindowEvents
+        chromeWithCommandSync
             .onAppear {
                 appAccent.refresh()
                 performInitialSetup()
@@ -92,15 +92,13 @@ struct ContentView: View {
             }
     }
 
-    private var chromeWithWindowEvents: some View {
+    private var presentedChrome: some View {
         rootChrome { platformRootCore }
             #if os(iOS)
             .sheet(isPresented: $showSavesSheet) { savesSheet }
             .sheet(isPresented: $showSettings) {
                 SudylkoSettings(appAccent: appAccent, appCommands: appCommands)
             }
-            #endif
-        #if os(iOS)
             .onChange(of: scenePhase) { _, phase in
                 let active = phase == .active
                 if isAppActive != active {
@@ -110,7 +108,11 @@ struct ContentView: View {
                     handleSystemThemeDidChange()
                 }
             }
-        #endif
+            #endif
+    }
+
+    private var chromeWithStateObservers: some View {
+        presentedChrome
             .onChange(of: appearanceRaw) { _, _ in refreshAppearanceFromSettings() }
             .onChange(of: isAppActive) { _, active in
                 session.appActivityChanged(isActive: active, holdAutoPause: shouldHoldAutoPause)
@@ -139,6 +141,10 @@ struct ContentView: View {
             .onChange(of: session.puzzleTimer.formattedElapsed) { _, _ in
                 if session.activeSaveID != nil { session.updateDockIcon() }
             }
+    }
+
+    private var chromeWithAppNotifications: some View {
+        chromeWithStateObservers
             .onReceive(NotificationCenter.default.publisher(for: .sudylkoSystemThemeDidChange)) { _ in
                 handleSystemThemeDidChange()
             }
@@ -148,7 +154,7 @@ struct ContentView: View {
             .onReceive(NotificationCenter.default.publisher(for: .showKeyboardShortcuts)) { _ in
                 modals.showsKeyboardShortcuts = true
             }
-        #if DEBUG
+            #if DEBUG
             .onReceive(NotificationCenter.default.publisher(for: .requestDeleteAllSavesConfirmation)) { _ in
                 modals.confirmsDeleteAllSaves = true
             }
@@ -158,21 +164,14 @@ struct ContentView: View {
             }
             .onReceive(NotificationCenter.default.publisher(for: .debugTriggerPulse)) { notification in
                 guard let kind = notification.object as? DebugPulseKind else { return }
-                switch kind {
-                case .puzzleComplete:
-                    session.game?.debugTriggerPuzzleCompletePulse()
-                case .finishedRow:
-                    session.game?.debugTriggerFinishedRowPulse()
-                case .finishedColumn:
-                    session.game?.debugTriggerFinishedColumnPulse()
-                case .finishedBox:
-                    session.game?.debugTriggerFinishedBoxPulse()
-                case .finishedDigit:
-                    session.game?.debugTriggerFinishedDigitPulse()
-                }
+                triggerDebugPulse(kind)
             }
-        #endif
+            #endif
             .onReceive(NotificationCenter.default.publisher(for: .savesDidChange), perform: session.handleSavesDidChange)
+    }
+
+    private var chromeWithCommandSync: some View {
+        chromeWithAppNotifications
             .onReceive(NotificationCenter.default.publisher(for: .undo)) { _ in
                 session.game?.undo()
                 appCommands.sync(with: session.game)
@@ -189,6 +188,23 @@ struct ContentView: View {
             .onChange(of: session.game?.canRedo) { _, _ in appCommands.sync(with: session.game) }
             .onChange(of: session.game?.canDelete) { _, _ in appCommands.sync(with: session.game) }
     }
+
+    #if DEBUG
+    private func triggerDebugPulse(_ kind: DebugPulseKind) {
+        switch kind {
+        case .puzzleComplete:
+            session.game?.debugTriggerPuzzleCompletePulse()
+        case .finishedRow:
+            session.game?.debugTriggerFinishedRowPulse()
+        case .finishedColumn:
+            session.game?.debugTriggerFinishedColumnPulse()
+        case .finishedBox:
+            session.game?.debugTriggerFinishedBoxPulse()
+        case .finishedDigit:
+            session.game?.debugTriggerFinishedDigitPulse()
+        }
+    }
+    #endif
 
     @ViewBuilder
     private var platformRootCore: some View {
