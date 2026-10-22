@@ -32,6 +32,8 @@ final class GameSessionModel {
     @ObservationIgnored private let randomPuzzlePrep = RandomPuzzlePrepCache()
     @ObservationIgnored private var celebrationQueue: [[AchievementID]] = []
     @ObservationIgnored private var autoPausedForInactive = false
+    /// Whether the app is inactive, Settings is open, or the window is minimized, so a timer that starts now pauses.
+    @ObservationIgnored private var isAutoPauseHeld = false
     @ObservationIgnored private var saveLoadTask: Task<Void, Never>?
 
     init(appAccent: AppAccentModel) {
@@ -69,22 +71,20 @@ final class GameSessionModel {
     func start() {
         refreshSaveSlotsInBackground()
         randomPuzzlePrep.schedulePrepForAllDifficulties()
-        Task {
-            if let id = UUID(uuidString: lastFocusedSaveIDString),
-               await Task.detached(priority: .utility) { SaveLoadWork.load(id: id) }.value == nil {
-                lastFocusedSaveIDString = ""
-            }
-            await restoreLastSessionIfNeeded()
-        }
+        Task { await restoreLastSessionIfNeeded() }
     }
 
     private func restoreLastSessionIfNeeded() async {
-        guard !isInGame else { return }
-        guard let id = UUID(uuidString: lastFocusedSaveIDString) else { return }
+        guard !isInGame, let id = UUID(uuidString: lastFocusedSaveIDString) else { return }
         let state = await Task.detached(priority: .utility) {
             SaveLoadWork.load(id: id)
         }.value
-        guard let state, state.outcome == .playing else { return }
+        guard let state else {
+            lastFocusedSaveIDString = ""
+            return
+        }
+        // A game started while the save loaded, such as `--initial-view game`, wins.
+        guard state.outcome == .playing, !isInGame else { return }
         await performSaveSwitch(to: id)
     }
 
@@ -134,6 +134,7 @@ final class GameSessionModel {
         }
         game.replayCurrentPuzzle()
         puzzleTimer.start()
+        holdAutoPauseIfNeeded()
         if var metadata = activeSaveMetadata {
             metadata.statsCompletionRecorded = false
             activeSaveMetadata = metadata
@@ -242,6 +243,7 @@ final class GameSessionModel {
         }
         applyGameplaySettingsToActiveGame()
         puzzleTimer.start()
+        holdAutoPauseIfNeeded()
         updateDockIcon()
         randomPuzzlePrep.schedulePrepForAllDifficulties()
     }
@@ -336,6 +338,7 @@ final class GameSessionModel {
         }
         applyGameplaySettingsToActiveGame()
         resumeLoadedGameIfNeeded()
+        holdAutoPauseIfNeeded()
         updateDockIcon()
 
         refreshSaveSlotsInBackground()
@@ -578,10 +581,18 @@ final class GameSessionModel {
     /// Pauses the running puzzle while the app is inactive, settings are open, or the window is
     /// minimized, and resumes only a pause it started itself.
     func updateAutoPause(hold: Bool) {
+        isAutoPauseHeld = hold
         if hold {
             pauseForAutoInterruptIfNeeded()
         } else {
             resumeAfterAutoPauseIfNeeded()
+        }
+    }
+
+    /// The hold only reacts to changes, so a timer that starts or resumes during one pauses here.
+    private func holdAutoPauseIfNeeded() {
+        if isAutoPauseHeld {
+            pauseForAutoInterruptIfNeeded()
         }
     }
 

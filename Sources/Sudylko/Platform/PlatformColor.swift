@@ -11,10 +11,14 @@ enum PlatformColor {
     @MainActor
     static func systemColorScheme() -> ColorScheme {
         #if os(macOS)
+        // Before NSApplication exists, as in `App.init`, the global default is the only source.
+        guard let app = NSApp else {
+            return UserDefaults.standard.string(forKey: "AppleInterfaceStyle") == "Dark" ? .dark : .light
+        }
         // Prefer the game window’s effective appearance — NSApp can lag after we clear a forced theme.
-        let appearance = NSApp.keyWindow?.effectiveAppearance
-            ?? NSApp.mainWindow?.effectiveAppearance
-            ?? NSApp.effectiveAppearance
+        let appearance = app.keyWindow?.effectiveAppearance
+            ?? app.mainWindow?.effectiveAppearance
+            ?? app.effectiveAppearance
         let match = appearance.bestMatch(from: [.darkAqua, .aqua])
         return match == .darkAqua ? .dark : .light
         #elseif canImport(UIKit)

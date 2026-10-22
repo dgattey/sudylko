@@ -23,7 +23,7 @@ Sudylko is a [DylKit](https://github.com/dgattey/dyl-kit) app: one SwiftPM execu
 
 ## Building, running and checking
 
-DylKit's [`apple-dev-loop`](https://github.com/dgattey/dyl-kit/blob/main/skills/apple-dev-loop/SKILL.md) skill is the guide: `./run dev relaunch` builds `build/Sudylko Dev.app` and opens it in the background, `./run dev ios --run` does the same on the iOS Simulator, and `./run dev verify` runs what CI runs. Sudylko's `--initial-view` names are `game` and `settings/<page>` (`appearance`, `gameplay`, `software-updates`, `about`).
+DylKit's [`apple-dev-loop`](https://github.com/dgattey/dyl-kit/blob/main/skills/apple-dev-loop/SKILL.md) skill is the guide: `./run dev relaunch` builds `build/Sudylko Dev.app` and opens it in the background, `./run dev ios --run` does the same on the iOS Simulator, and `./run dev verify` runs what CI runs. Sudylko's `--initial-view` names are `game` and `settings/<page>` (`appearance`, `gameplay`, `software-updates`, `about`). devkit launches never become active, so they show the board even with **Hide numbers when inactive** on; the puzzle timer stays paused, as it does whenever Sudylko is inactive.
 
 The **Debug** menu (unlock achievements, reset stats, delete all saves) and other `#if DEBUG` tooling only compile into debug builds, which is what `./run dev relaunch` builds.
 

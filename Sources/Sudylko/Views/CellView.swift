@@ -1,3 +1,4 @@
+import DylCore
 import SwiftUI
 
 struct CellView: View {
@@ -10,8 +11,9 @@ struct CellView: View {
     @Environment(\.isAppActive) private var isAppActive
     @AppStorage("hideNumbersWhenInactive") private var hideNumbersWhenInactive = true
 
+    /// devkit launches never become active, so they always show the board for captures.
     private var showsCellContent: Bool {
-        isAppActive || !hideNumbersWhenInactive
+        isAppActive || !hideNumbersWhenInactive || LaunchOverrides.current.staysInBackground
     }
 
     private var accentColor: Color { accent.interactiveForeground(for: colorScheme) }

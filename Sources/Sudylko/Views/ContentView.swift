@@ -471,6 +471,7 @@ struct ContentView: View {
         #else
         isAppActive = scenePhase == .active
         #endif
+        session.updateAutoPause(hold: shouldHoldAutoPause)
         session.updateDockIcon()
         openInitialView()
     }
