@@ -74,18 +74,24 @@ final class GameSessionModel {
         Task { await restoreLastSessionIfNeeded() }
     }
 
+    /// Yields to any game started or selected first, such as `--initial-view game`, whichever finishes loading first.
     private func restoreLastSessionIfNeeded() async {
-        guard !isInGame, let id = UUID(uuidString: lastFocusedSaveIDString) else { return }
+        guard !hasRequestedGame, let id = UUID(uuidString: lastFocusedSaveIDString) else { return }
         let state = await Task.detached(priority: .utility) {
             SaveLoadWork.load(id: id)
         }.value
+        guard !hasRequestedGame else { return }
         guard let state else {
             lastFocusedSaveIDString = ""
             return
         }
-        // A game started while the save loaded, such as `--initial-view game`, wins.
-        guard state.outcome == .playing, !isInGame else { return }
-        await performSaveSwitch(to: id)
+        guard state.outcome == .playing else { return }
+        switchToSave(id: id)
+    }
+
+    /// Every new game and save switch runs as `saveLoadTask`, so one exists once anything opened a game.
+    private var hasRequestedGame: Bool {
+        saveLoadTask != nil
     }
 
     // MARK: - Starting and leaving games
@@ -271,7 +277,8 @@ final class GameSessionModel {
             return
         }
         guard let newID else { return }
-        if newID == oldID, game != nil, lastFocusedSaveIDString == newID.uuidString {
+        // The session sets `activeSaveID` itself after loading a game; that game is already open.
+        if game != nil, lastFocusedSaveIDString == newID.uuidString {
             return
         }
         switchToSave(id: newID)
@@ -338,18 +345,24 @@ final class GameSessionModel {
         }
         applyGameplaySettingsToActiveGame()
         resumeLoadedGameIfNeeded()
-        holdAutoPauseIfNeeded()
         updateDockIcon()
 
         refreshSaveSlotsInBackground()
     }
 
+    /// Loaded games run, except under the auto-pause hold, where they pause until the hold lifts.
     private func resumeLoadedGameIfNeeded() {
-        guard let game, !game.isPuzzleEnded else { return }
-        guard puzzleTimer.isRunning else { return }
-        if puzzleTimer.isPaused {
-            puzzleTimer.resume()
+        guard let game, !game.isPuzzleEnded, puzzleTimer.isRunning else { return }
+        guard isAutoPauseHeld else {
+            if puzzleTimer.isPaused {
+                puzzleTimer.resume()
+            }
+            return
         }
+        if !puzzleTimer.isPaused {
+            puzzleTimer.pause()
+        }
+        autoPausedForInactive = true
     }
 
     // MARK: - Persistence
