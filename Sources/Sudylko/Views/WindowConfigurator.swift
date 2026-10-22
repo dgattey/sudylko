@@ -142,7 +142,7 @@ final class ThemedWindowAnchor: NSView {
         if let window {
             configureWindowChromeIfNeeded(window)
         }
-        installThemeObserverIfNeeded()
+        updateThemeObserver()
         installApplicationActiveObserversIfNeeded()
         installWindowMiniaturizeObserversIfNeeded()
         installWindowFullscreenObserversIfNeeded()
@@ -163,7 +163,15 @@ final class ThemedWindowAnchor: NSView {
         window.titlebarSeparatorStyle = .none
     }
 
-    private func installThemeObserverIfNeeded() {
+    /// Observers come and go with the window, because a main-actor view's deinit can't touch its isolated state.
+    private func updateThemeObserver() {
+        guard window != nil else {
+            if let themeObserver {
+                DistributedNotificationCenter.default().removeObserver(themeObserver)
+            }
+            themeObserver = nil
+            return
+        }
         guard themeObserver == nil else { return }
         themeObserver = DistributedNotificationCenter.default().addObserver(
             forName: AppearanceMode.systemThemeDidChangeNotification,
@@ -263,18 +271,6 @@ final class ThemedWindowAnchor: NSView {
             onWindowFullscreenChange?(false)
         default:
             onWindowFullscreenChange?(window?.styleMask.contains(.fullScreen) == true)
-        }
-    }
-
-    deinit {
-        if let themeObserver {
-            DistributedNotificationCenter.default().removeObserver(themeObserver)
-        }
-        for observer in windowMiniaturizeObservers {
-            NotificationCenter.default.removeObserver(observer)
-        }
-        for observer in windowFullscreenObservers {
-            NotificationCenter.default.removeObserver(observer)
         }
     }
 }

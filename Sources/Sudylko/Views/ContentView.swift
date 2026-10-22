@@ -78,11 +78,9 @@ struct ContentView: View {
             }
             #if os(macOS)
             .onChange(of: appAccent.accent) { _, _ in
-                DockIconRenderer.invalidateCache()
                 session.updateDockIcon()
             }
             .onChange(of: appAccent.resolvedColorScheme) { _, _ in
-                DockIconRenderer.invalidateCache()
                 session.updateDockIcon()
             }
             #endif
