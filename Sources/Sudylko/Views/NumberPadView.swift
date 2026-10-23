@@ -38,7 +38,7 @@ struct NumberPadView: View {
 
     private var noteButtonWidth: CGFloat {
         if style == .row && Self.rowWraps(maxWidth) {
-            return maxWidth - keySize - spacing
+            return max(0, maxWidth - keySize - spacing)
         }
         return noteButtonWidthUnits * keySize + spacing
     }
@@ -48,11 +48,16 @@ struct NumberPadView: View {
         maxWidth < 12 * 28 + 8 * 11
     }
 
+    /// Narrow wrapped rows shrink the digit gaps toward 2pt before the keys drop under 28pt.
+    nonisolated static func rowDigitSpacing(_ maxWidth: CGFloat) -> CGFloat {
+        rowWraps(maxWidth) ? min(8, max(2, (maxWidth - 9 * 28) / 8)) : 8
+    }
+
     static func keySize(for maxWidth: CGFloat, style: NumberPadStyle, includesNote: Bool = false) -> CGFloat {
         switch style {
         case .row:
             if rowWraps(maxWidth) {
-                return min(48, max(28, (maxWidth - 8 * 8) / 9))
+                return min(48, max(0, maxWidth - 8 * rowDigitSpacing(maxWidth)) / 9)
             }
             let unitCount: CGFloat = includesNote ? 12 : 10
             let totalSpacing = 8 * (unitCount - 1)
@@ -101,7 +106,7 @@ struct NumberPadView: View {
         Group {
             if Self.rowWraps(maxWidth) {
                 VStack(spacing: spacing) {
-                    HStack(spacing: spacing) {
+                    HStack(spacing: Self.rowDigitSpacing(maxWidth)) {
                         ForEach(1...9, id: \.self) { digit in
                             digitButton(digit)
                         }

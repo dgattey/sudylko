@@ -65,7 +65,7 @@ struct LoadingPuzzleSkeleton: View {
         let key = NumberPadView.keySize(for: maxWidth, style: .row, includesNote: true)
         if NumberPadView.rowWraps(maxWidth) {
             VStack(spacing: keySpacing) {
-                HStack(spacing: keySpacing) {
+                HStack(spacing: NumberPadView.rowDigitSpacing(maxWidth)) {
                     ForEach(0..<9, id: \.self) { _ in keyPlaceholder(width: key, height: key) }
                 }
                 HStack(spacing: keySpacing) {
