@@ -3,8 +3,8 @@ import SwiftUI
 
 /// iOS has no Dock tile; stubs keep shared call sites compiling.
 @MainActor
-enum DockIconRenderer {
-    static func updateDockIcon(
+public enum DockIconRenderer {
+    public static func updateDockIcon(
         accent: AppAccentColor,
         colorScheme: ColorScheme,
         inGame: Bool,

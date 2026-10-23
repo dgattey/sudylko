@@ -1,4 +1,5 @@
 import Charts
+import SudylkoShared
 import SwiftUI
 
 /// Lifetime stats (sidebar; independent of which saves still exist).

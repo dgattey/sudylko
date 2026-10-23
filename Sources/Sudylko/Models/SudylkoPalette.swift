@@ -1,4 +1,5 @@
 import DylUI
+import SudylkoShared
 import SwiftUI
 
 /// DylUI's palette in the player's accent, already resolved for the app's appearance setting by `AppAccentModel`.

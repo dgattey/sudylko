@@ -1,4 +1,5 @@
 import DylUI
+import SudylkoShared
 import SwiftUI
 
 /// The Settings window on macOS and the Settings sheet on iOS. The running puzzle pauses while it's open.
@@ -30,8 +31,8 @@ struct SudylkoSettings: View {
 }
 
 private struct AppearanceSettings: View {
-    @AppStorage("appearanceMode") private var appearanceRaw = AppearanceMode.system.rawValue
-    @AppStorage("accentColor") private var accentRaw = AppAccentColor.blue.rawValue
+    @AppStorage(SudylkoPreferenceKey.appearance) private var appearanceRaw = AppearanceMode.system.rawValue
+    @AppStorage(SudylkoPreferenceKey.accent) private var accentRaw = AppAccentColor.blue.rawValue
     @AppStorage("puzzleFontStyle") private var fontStyleRaw = PuzzleFontStyle.rounded.rawValue
     @AppStorage("hideNumbersWhenInactive") private var hideNumbersWhenInactive = true
 

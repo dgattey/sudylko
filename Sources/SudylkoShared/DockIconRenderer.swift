@@ -2,13 +2,14 @@
 import AppKit
 import SwiftUI
 
-/// The running app's icon, tinted to the chosen accent and appearance, with the timer or "Paused" as the Dock badge.
+/// The app's icon, tinted to the chosen accent and appearance, with the timer or "Paused" as the Dock badge.
 ///
-/// The image goes on both `applicationIconImage` (Cmd-Tab, About, notifications) and `dockTile.contentView`, which
-/// the Dock prefers. Finder and the quit Dock tile use the bundled blue icon from `scripts/generate-icon.swift`,
-/// which draws the same artwork.
+/// While the app runs, the image goes on both `applicationIconImage` (Cmd-Tab, About, notifications) and
+/// `dockTile.contentView`, which the Dock prefers. While it's quit, `SudylkoDockTilePlugin` draws the same image from
+/// the app's saved preferences inside the Dock's process. Finder uses the bundled blue icon from
+/// `scripts/generate-icon.swift`, which draws the same artwork.
 @MainActor
-enum DockIconRenderer {
+public enum DockIconRenderer {
     private enum Layout {
         static let canvas: CGFloat = 1024
         /// Grid fill vs canvas (zoom); macOS applies icon shape — do not pre-mask.
@@ -68,7 +69,7 @@ enum DockIconRenderer {
         (2, 2, "1", false),
     ]
 
-    static func updateDockIcon(
+    public static func updateDockIcon(
         accent: AppAccentColor,
         colorScheme: ColorScheme,
         inGame: Bool,
@@ -88,17 +89,44 @@ enum DockIconRenderer {
         applyBadgeLabel(badgeLabel, on: NSApplication.shared.dockTile)
     }
 
+    /// Draws the quit-state tile inside the Dock's process from the app's saved accent and appearance.
+    public static func applyQuitStateDockTile(_ dockTile: NSDockTile, domain: SudylkoDockDomain) {
+        let accent = domain.string(forKey: SudylkoPreferenceKey.accent).flatMap(AppAccentColor.init(rawValue:))
+            ?? .blue
+        let colorScheme: ColorScheme = switch domain.string(forKey: SudylkoPreferenceKey.appearance) {
+        case "light": .light
+        case "dark": .dark
+        default: systemAppearanceIsDark() ? .dark : .light
+        }
+        dockTile.badgeLabel = nil
+        installDockTileContentView(dockTileImage(accent: accent, colorScheme: colorScheme), on: dockTile)
+    }
+
     /// Re-installs the dock tile only when accent or appearance changed. Without this guard
     /// the per-second timer tick would rebuild the contentView and IPC to the Dock every call.
     private static func applyRunningDockIcon(accent: AppAccentColor, colorScheme: ColorScheme) {
         let key = IconKey(accent: accent, colorScheme: colorScheme)
         guard installedKey != key else { return }
-        let master = iconImage(accent: accent, colorScheme: colorScheme, pixelSize: Layout.masterPixels)
-        let image = squircleClippedDockImage(from: master, tilePoints: Layout.dockTilePoints)
+        let image = dockTileImage(accent: accent, colorScheme: colorScheme)
         let app = NSApplication.shared
         app.applicationIconImage = image
         installDockTileContentView(image, on: app.dockTile)
         installedKey = key
+    }
+
+    /// OS-wide dark/light, read straight from the global domain. The Dock process's `NSApp.effectiveAppearance`
+    /// doesn't reliably reflect the system when `AppleInterfaceThemeChangedNotification` arrives, so the quit-state
+    /// tile can't trust it.
+    private static func systemAppearanceIsDark() -> Bool {
+        CFPreferencesAppSynchronize(kCFPreferencesAnyApplication)
+        let key = "AppleInterfaceStyle" as CFString
+        let style = CFPreferencesCopyAppValue(key, kCFPreferencesAnyApplication) as? String
+        return style?.caseInsensitiveCompare("dark") == .orderedSame
+    }
+
+    private static func dockTileImage(accent: AppAccentColor, colorScheme: ColorScheme) -> NSImage {
+        let master = iconImage(accent: accent, colorScheme: colorScheme, pixelSize: Layout.masterPixels)
+        return squircleClippedDockImage(from: master, tilePoints: Layout.dockTilePoints)
     }
 
     /// Draws the master into a centered body the size of the Apple template (≈80% of the

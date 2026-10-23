@@ -3,7 +3,7 @@ import SwiftUI
 import AppKit
 #endif
 
-enum AppAccentColor: String, CaseIterable, Identifiable, Sendable {
+public enum AppAccentColor: String, CaseIterable, Identifiable, Sendable {
     case blue
     case purple
     case pink
@@ -12,10 +12,10 @@ enum AppAccentColor: String, CaseIterable, Identifiable, Sendable {
     case yellow
     case green
 
-    var id: String { rawValue }
+    public var id: String { rawValue }
 
     /// Swatch and vivid fills (color picker dots).
-    var color: Color {
+    public var color: Color {
         switch self {
         case .blue: Color(red: 0.0, green: 0.48, blue: 1.0)
         case .purple: Color(red: 0.69, green: 0.32, blue: 0.87)
@@ -28,7 +28,7 @@ enum AppAccentColor: String, CaseIterable, Identifiable, Sendable {
     }
 
     /// Prominent buttons and large fills — softened on light backgrounds when needed.
-    func displayColor(for colorScheme: ColorScheme) -> Color {
+    public func displayColor(for colorScheme: ColorScheme) -> Color {
         switch self {
         case .yellow where colorScheme == .light:
             return Color(red: 0.96, green: 0.76, blue: 0.0)
@@ -40,7 +40,7 @@ enum AppAccentColor: String, CaseIterable, Identifiable, Sendable {
     }
 
     /// Text, icons, and board digits.
-    func interactiveForeground(for colorScheme: ColorScheme) -> Color {
+    public func interactiveForeground(for colorScheme: ColorScheme) -> Color {
         switch self {
         case .yellow:
             if colorScheme == .dark {
@@ -62,7 +62,7 @@ enum AppAccentColor: String, CaseIterable, Identifiable, Sendable {
         }
     }
 
-    func selectionFill(for colorScheme: ColorScheme) -> Color {
+    public func selectionFill(for colorScheme: ColorScheme) -> Color {
         interactiveForeground(for: colorScheme).opacity(0.12)
     }
 
@@ -80,7 +80,7 @@ enum AppAccentColor: String, CaseIterable, Identifiable, Sendable {
         }
     }
 
-    func selectionBorder(for colorScheme: ColorScheme) -> Color {
+    public func selectionBorder(for colorScheme: ColorScheme) -> Color {
         switch self {
         case .yellow, .orange, .green:
             interactiveForeground(for: colorScheme).opacity(0.65)
@@ -89,7 +89,7 @@ enum AppAccentColor: String, CaseIterable, Identifiable, Sendable {
         }
     }
 
-    var prefersStrongSelectionBorder: Bool {
+    public var prefersStrongSelectionBorder: Bool {
         switch self {
         case .yellow, .orange, .green: true
         default: false

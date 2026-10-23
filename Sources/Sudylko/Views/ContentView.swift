@@ -1,5 +1,6 @@
 import DylCore
 import DylUI
+import SudylkoShared
 import SwiftUI
 #if os(macOS)
 import AppKit
@@ -15,7 +16,7 @@ struct ContentView: View {
     @Environment(\.openWindow) private var openWindow
 #endif
     @Environment(AppAccentModel.self) private var appAccent
-    @AppStorage("appearanceMode") private var appearanceRaw = AppearanceMode.system.rawValue
+    @AppStorage(SudylkoPreferenceKey.appearance) private var appearanceRaw = AppearanceMode.system.rawValue
     @AppStorage("puzzleFontStyle") private var fontStyleRaw = PuzzleFontStyle.rounded.rawValue
     @AppStorage("revealMistakesImmediately") private var revealMistakesImmediately = false
     @AppStorage("impossibleMode") private var impossibleMode = false

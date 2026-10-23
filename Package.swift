@@ -9,19 +9,31 @@ let package = Package(
     ],
     products: [
         .executable(name: "Sudylko", targets: ["Sudylko"]),
+        .library(name: "SudylkoDockTilePlugin", type: .dynamic, targets: ["SudylkoDockTilePlugin"]),
     ],
     dependencies: [
-        .package(url: "https://github.com/dgattey/dyl-kit", from: "0.2.1"),
+        .package(url: "https://github.com/dgattey/dyl-kit", from: "0.3.0"),
     ],
     targets: [
+        .target(
+            name: "SudylkoShared",
+            path: "Sources/SudylkoShared"
+        ),
         .executableTarget(
             name: "Sudylko",
             dependencies: [
+                "SudylkoShared",
                 .product(name: "DylCore", package: "dyl-kit"),
                 .product(name: "DylUI", package: "dyl-kit"),
                 .product(name: "DylUpdates", package: "dyl-kit"),
             ],
             path: "Sources/Sudylko"
+        ),
+        .target(
+            name: "SudylkoDockTilePlugin",
+            dependencies: ["SudylkoShared"],
+            path: "Sources/SudylkoDockTilePlugin",
+            swiftSettings: [.swiftLanguageMode(.v5)]
         ),
         .testTarget(
             name: "SudylkoLogicTests",

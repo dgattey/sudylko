@@ -1,5 +1,5 @@
 # Sudylko app manifest, read by devkit, release-kit and the download site.
-# Schema: DylKit's Sources/DylManifest/DylAppManifest.swift. `./run dev checks` validates it.
+# Schema: DylKit's Sources/DylManifest/DylAppManifest.swift. `swift run devkit checks` validates it.
 
 [app]
 name = "Sudylko"
@@ -11,6 +11,7 @@ category = "public.app-category.puzzle-games"
 product = "Sudylko"
 entitlements = "Sudylko.entitlements"
 icon-generator = "scripts/generate-icon.swift"
+dock-tile-plugin = { product = "SudylkoDockTilePlugin", principal-class = "SudylkoDockTilePlugIn" }
 
 [ios]
 bundle-id = "com.sudylko.ios"

@@ -1,5 +1,6 @@
 #if os(macOS)
 import AppKit
+import SudylkoShared
 
 @MainActor
 final class SudylkoAppDelegate: NSObject, NSApplicationDelegate {
@@ -23,6 +24,15 @@ final class SudylkoAppDelegate: NSObject, NSApplicationDelegate {
         #if DEBUG
         DebugMenuController.install()
         #endif
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        CFPreferencesAppSynchronize(kCFPreferencesCurrentApplication)
+        // The Dock keeps the plug-in's last contentView between launches, so it only redraws for the final
+        // values if we tell it to.
+        if let appID = Bundle.main.bundleIdentifier {
+            SudylkoDockDomain(appID: appID).postPreferencesDidChange()
+        }
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
