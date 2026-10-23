@@ -1,4 +1,5 @@
 import DylCore
+import SudylkoShared
 import SwiftUI
 
 struct CellView: View {

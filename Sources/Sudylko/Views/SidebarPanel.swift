@@ -1,3 +1,4 @@
+import SudylkoShared
 import SwiftUI
 
 /// Games / Statistics / Achievements switcher (no `Picker` label — avoids crushed sidebar layout on macOS).

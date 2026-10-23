@@ -1,3 +1,4 @@
+import SudylkoShared
 import SwiftUI
 
 /// Full-width segmented difficulty control with quick-start icons.
