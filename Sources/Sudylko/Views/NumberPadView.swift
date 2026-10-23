@@ -257,15 +257,21 @@ private struct PadKey: View {
         #endif
     }
 
+    /// macOS keeps primary labels and marks highlighted keys with the border alone, as `.bordered` did;
+    /// an accent label over the accent wash drops below readable contrast there.
+    private var tintsKeys: Bool {
+        #if os(macOS)
+        return false
+        #else
+        return true
+        #endif
+    }
+
     private var foreground: Color {
         if !isEnabled {
             return .secondary
         }
-        #if os(macOS)
-        return highlighted ? accent.interactiveForeground(for: colorScheme) : .primary
-        #else
-        return accent.interactiveForeground(for: colorScheme)
-        #endif
+        return tintsKeys ? accent.interactiveForeground(for: colorScheme) : .primary
     }
 
     var body: some View {
@@ -275,7 +281,11 @@ private struct PadKey: View {
             .background {
                 shape
                     .fill(neutralFill)
-                    .overlay { if highlighted { shape.fill(accent.selectionFill(for: colorScheme)) } }
+                    .overlay {
+                        if highlighted && tintsKeys {
+                            shape.fill(accent.selectionFill(for: colorScheme))
+                        }
+                    }
             }
             .overlay {
                 shape.strokeBorder(
