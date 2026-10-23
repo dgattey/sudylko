@@ -64,12 +64,13 @@ struct LoadingPuzzleSkeleton: View {
     private func rowPlaceholder(maxWidth: CGFloat) -> some View {
         let key = NumberPadView.keySize(for: maxWidth, style: .row, includesNote: true)
         if NumberPadView.rowWraps(maxWidth) {
-            VStack(spacing: keySpacing) {
-                HStack(spacing: NumberPadView.rowDigitSpacing(maxWidth)) {
+            let gap = NumberPadView.rowDigitSpacing(maxWidth)
+            VStack(spacing: gap) {
+                HStack(spacing: gap) {
                     ForEach(0..<9, id: \.self) { _ in keyPlaceholder(width: key, height: key) }
                 }
-                HStack(spacing: keySpacing) {
-                    keyPlaceholder(width: maxWidth - key - keySpacing, height: key)
+                HStack(spacing: gap) {
+                    keyPlaceholder(width: maxWidth - key - gap, height: key)
                     keyPlaceholder(width: key, height: key)
                 }
             }

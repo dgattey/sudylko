@@ -38,7 +38,7 @@ struct NumberPadView: View {
 
     private var noteButtonWidth: CGFloat {
         if style == .row && Self.rowWraps(maxWidth) {
-            return max(0, maxWidth - keySize - spacing)
+            return max(0, maxWidth - keySize - Self.rowDigitSpacing(maxWidth))
         }
         return noteButtonWidthUnits * keySize + spacing
     }
@@ -48,7 +48,7 @@ struct NumberPadView: View {
         maxWidth < 12 * 28 + 8 * 11
     }
 
-    /// Narrow wrapped rows shrink the digit gaps toward 2pt before the keys drop under 28pt.
+    /// Narrow wrapped rows shrink every gap toward 2pt before the keys drop under 28pt.
     nonisolated static func rowDigitSpacing(_ maxWidth: CGFloat) -> CGFloat {
         rowWraps(maxWidth) ? min(8, max(2, (maxWidth - 9 * 28) / 8)) : 8
     }
@@ -79,7 +79,7 @@ struct NumberPadView: View {
         switch style {
         case .row:
             let key = keySize(for: maxWidth, style: .row, includesNote: includesNote)
-            return rowWraps(maxWidth) ? key * 2 + 8 + 18 : key + 18
+            return rowWraps(maxWidth) ? key * 2 + rowDigitSpacing(maxWidth) + 18 : key + 18
         case .grid3x3:
             let cap = boardSide > 0 ? min(80, boardSide * 0.12) : 56
             let key = min(cap, keySize(for: maxWidth, style: .grid3x3, includesNote: includesNote))
@@ -105,13 +105,14 @@ struct NumberPadView: View {
     private var rowPad: some View {
         Group {
             if Self.rowWraps(maxWidth) {
-                VStack(spacing: spacing) {
-                    HStack(spacing: Self.rowDigitSpacing(maxWidth)) {
+                let gap = Self.rowDigitSpacing(maxWidth)
+                VStack(spacing: gap) {
+                    HStack(spacing: gap) {
                         ForEach(1...9, id: \.self) { digit in
                             digitButton(digit)
                         }
                     }
-                    HStack(spacing: spacing) {
+                    HStack(spacing: gap) {
                         noteButton
                         clearButton
                     }
