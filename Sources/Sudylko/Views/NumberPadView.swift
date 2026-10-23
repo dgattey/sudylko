@@ -1,4 +1,10 @@
 import SwiftUI
+#if canImport(AppKit)
+import AppKit
+#endif
+#if canImport(UIKit)
+import UIKit
+#endif
 
 enum NumberPadStyle {
     case row
@@ -14,8 +20,6 @@ struct NumberPadView: View {
     var onInteraction: (() -> Void)? = nil
 
     @Environment(\.puzzleFontStyle) private var puzzleFontStyle
-    @Environment(\.colorScheme) private var colorScheme
-    @Environment(\.appAccent) private var accent
 
     private let spacing: CGFloat = 8
     private let noteButtonWidthUnits: CGFloat = 2
@@ -181,9 +185,7 @@ struct NumberPadView: View {
             }
         }
         .frame(width: keySize, height: keySize)
-        .buttonStyle(.bordered)
-        .tint(highlighted ? accent.interactiveForeground(for: colorScheme) : nil)
-        .padKeyBorder(highlighted: highlighted, accent: accent, colorScheme: colorScheme)
+        .buttonStyle(PadKeyButtonStyle(highlighted: highlighted))
         .disabled(exhausted)
         .opacity(exhausted ? 0.42 : 1)
         .sudylkoFocusSuppressed()
@@ -200,9 +202,7 @@ struct NumberPadView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .frame(width: noteButtonWidth, height: keySize)
-        .buttonStyle(.bordered)
-        .tint(game.isPencilMode ? accent.interactiveForeground(for: colorScheme) : nil)
-        .padKeyBorder(highlighted: game.isPencilMode, accent: accent, colorScheme: colorScheme)
+        .buttonStyle(PadKeyButtonStyle(highlighted: game.isPencilMode))
         .sudylkoFocusSuppressed()
         .help("Notes mode — tap numbers to add small pencil marks")
     }
@@ -220,21 +220,70 @@ struct NumberPadView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .frame(width: keySize, height: keySize)
-        .buttonStyle(.bordered)
-        .padKeyBorder(highlighted: false, accent: accent, colorScheme: colorScheme)
+        .buttonStyle(PadKeyButtonStyle(highlighted: false))
         .sudylkoFocusSuppressed()
         .help("Clear selected cell")
     }
 }
 
-private extension View {
-    func padKeyBorder(highlighted: Bool, accent: AppAccentColor, colorScheme: ColorScheme) -> some View {
-        overlay {
-            RoundedRectangle(cornerRadius: ThemeMetrics.controlCornerRadius, style: .continuous)
-                .strokeBorder(
+/// System button chrome pads labels until small keys clip them, and under Liquid Glass it draws a
+/// capsule inside the rounded-rect border, so pad keys draw their own fill, border, and states.
+private struct PadKeyButtonStyle: ButtonStyle {
+    let highlighted: Bool
+
+    func makeBody(configuration: Configuration) -> some View {
+        PadKey(label: configuration.label, highlighted: highlighted, pressed: configuration.isPressed)
+    }
+}
+
+private struct PadKey: View {
+    let label: ButtonStyleConfiguration.Label
+    let highlighted: Bool
+    let pressed: Bool
+
+    @Environment(\.isEnabled) private var isEnabled
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.appAccent) private var accent
+
+    private var shape: RoundedRectangle {
+        RoundedRectangle(cornerRadius: ThemeMetrics.controlCornerRadius, style: .continuous)
+    }
+
+    private var neutralFill: Color {
+        #if os(macOS)
+        return Color(nsColor: .controlColor)
+        #else
+        return Color(uiColor: .secondarySystemFill)
+        #endif
+    }
+
+    private var foreground: Color {
+        if !isEnabled {
+            return .secondary
+        }
+        #if os(macOS)
+        return highlighted ? accent.interactiveForeground(for: colorScheme) : .primary
+        #else
+        return accent.interactiveForeground(for: colorScheme)
+        #endif
+    }
+
+    var body: some View {
+        label
+            .foregroundStyle(foreground)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background {
+                shape
+                    .fill(neutralFill)
+                    .overlay { if highlighted { shape.fill(accent.selectionFill(for: colorScheme)) } }
+            }
+            .overlay {
+                shape.strokeBorder(
                     highlighted ? accent.selectionBorder(for: colorScheme) : Color.primary.opacity(0.28),
                     lineWidth: highlighted && accent.prefersStrongSelectionBorder ? 1.5 : 1
                 )
-        }
+            }
+            .contentShape(shape)
+            .opacity(pressed ? 0.6 : 1)
     }
 }
