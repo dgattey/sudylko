@@ -37,12 +37,28 @@ struct NumberPadView: View {
     }
 
     private var noteButtonWidth: CGFloat {
-        noteButtonWidthUnits * keySize + spacing
+        if style == .row && Self.rowWraps(maxWidth) {
+            return max(0, maxWidth - keySize - Self.rowDigitSpacing(maxWidth))
+        }
+        return noteButtonWidthUnits * keySize + spacing
+    }
+
+    /// Below this width a one-line row needs keys under 28pt, so the digits take their own line.
+    nonisolated static func rowWraps(_ maxWidth: CGFloat) -> Bool {
+        maxWidth < 12 * 28 + 8 * 11
+    }
+
+    /// Narrow wrapped rows shrink every gap toward 2pt before the keys drop under 28pt.
+    nonisolated static func rowDigitSpacing(_ maxWidth: CGFloat) -> CGFloat {
+        rowWraps(maxWidth) ? min(8, max(2, (maxWidth - 9 * 28) / 8)) : 8
     }
 
     static func keySize(for maxWidth: CGFloat, style: NumberPadStyle, includesNote: Bool = false) -> CGFloat {
         switch style {
         case .row:
+            if rowWraps(maxWidth) {
+                return min(48, max(0, maxWidth - 8 * rowDigitSpacing(maxWidth)) / 9)
+            }
             let unitCount: CGFloat = includesNote ? 12 : 10
             let totalSpacing = 8 * (unitCount - 1)
             let fit = (maxWidth - totalSpacing) / unitCount
@@ -62,7 +78,8 @@ struct NumberPadView: View {
     ) -> CGFloat {
         switch style {
         case .row:
-            return keySize(for: maxWidth, style: .row, includesNote: includesNote) + 18
+            let key = keySize(for: maxWidth, style: .row, includesNote: includesNote)
+            return rowWraps(maxWidth) ? key * 2 + rowDigitSpacing(maxWidth) + 18 : key + 18
         case .grid3x3:
             let cap = boardSide > 0 ? min(80, boardSide * 0.12) : 56
             let key = min(cap, keySize(for: maxWidth, style: .grid3x3, includesNote: includesNote))
@@ -86,12 +103,29 @@ struct NumberPadView: View {
     }
 
     private var rowPad: some View {
-        HStack(spacing: spacing) {
-            ForEach(1...9, id: \.self) { digit in
-                digitButton(digit)
+        Group {
+            if Self.rowWraps(maxWidth) {
+                let gap = Self.rowDigitSpacing(maxWidth)
+                VStack(spacing: gap) {
+                    HStack(spacing: gap) {
+                        ForEach(1...9, id: \.self) { digit in
+                            digitButton(digit)
+                        }
+                    }
+                    HStack(spacing: gap) {
+                        noteButton
+                        clearButton
+                    }
+                }
+            } else {
+                HStack(spacing: spacing) {
+                    ForEach(1...9, id: \.self) { digit in
+                        digitButton(digit)
+                    }
+                    noteButton
+                    clearButton
+                }
             }
-            noteButton
-            clearButton
         }
         .frame(
             width: maxWidth,
@@ -165,7 +199,7 @@ struct NumberPadView: View {
                 .labelStyle(.titleAndIcon)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .frame(width: style == .row ? noteButtonWidth : noteButtonWidth, height: keySize)
+        .frame(width: noteButtonWidth, height: keySize)
         .buttonStyle(.bordered)
         .tint(game.isPencilMode ? accent.interactiveForeground(for: colorScheme) : nil)
         .padKeyBorder(highlighted: game.isPencilMode, accent: accent, colorScheme: colorScheme)
