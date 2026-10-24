@@ -73,6 +73,10 @@ struct KeyboardShortcutsView: View {
                     KeyCap(systemImage: "delete.forward")
                 }
 
+                shortcutRow("Turn notes mode on or off") {
+                    KeyCap("N", minWidth: 28)
+                }
+
                 shortcutRow("Save game and return home") {
                     KeyCap(systemImage: "escape", minWidth: 32)
                 }

@@ -125,6 +125,12 @@ struct BoardKeyboardHost: NSViewRepresentable {
                 return true
             }
 
+            if Self.isNotesToggleKey(event) {
+                guard game.isInputEnabled, !game.isPuzzleEnded else { return false }
+                game.togglePencilMode()
+                return true
+            }
+
             if let digit = Self.digit(from: event) {
                 guard game.isInputEnabled, !game.isPuzzleEnded else { return false }
                 guard let selected = game.selected else { return true }
@@ -174,6 +180,10 @@ struct BoardKeyboardHost: NSViewRepresentable {
 
         private static func isClearKey(_ event: NSEvent) -> Bool {
             isDeleteKey(event) || event.charactersIgnoringModifiers?.lowercased() == "e"
+        }
+
+        private static func isNotesToggleKey(_ event: NSEvent) -> Bool {
+            event.charactersIgnoringModifiers?.lowercased() == "n"
         }
 
         private static func isDeleteKey(_ event: NSEvent) -> Bool {
