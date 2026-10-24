@@ -1,10 +1,19 @@
 import SwiftUI
 
 struct GameTimerBar: View {
-    @ObservedObject var timer: PuzzleTimer
+    let timer: PuzzleTimer
     let isPuzzleEnded: Bool
     let endedLabel: String?
     let endedLabelColor: Color
+
+    #if os(iOS)
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    /// On iPhone the bar sits between the glass back button and the glass action capsule, which leave it about 120pt
+    /// on the smallest phones, so it drops the clock icon and the toggle's title.
+    private var isCompact: Bool { horizontalSizeClass == .compact }
+    #else
+    private let isCompact = false
+    #endif
 
     var body: some View {
         Group {
@@ -23,36 +32,47 @@ struct GameTimerBar: View {
                 )
             }
         }
-        .padding(.horizontal, 12)
+        .padding(.horizontal, isCompact ? 0 : 12)
         .padding(.vertical, 6)
         .fixedSize()
     }
 
     private var timerContent: some View {
-        HStack(spacing: 14) {
-            Image(systemName: "clock")
-                .font(.body)
-                .foregroundStyle(.secondary)
+        HStack(spacing: isCompact ? 8 : 14) {
+            if !isCompact {
+                Image(systemName: "clock")
+                    .font(.body)
+                    .foregroundStyle(.secondary)
+            }
 
             Text(timer.formattedElapsed)
                 .font(.callout)
                 .monospacedDigit()
-                .frame(minWidth: 68, alignment: .leading)
+                .frame(minWidth: isCompact ? nil : 68, alignment: .leading)
 
             if isPuzzleEnded, let endedLabel {
                 Text(endedLabel)
                     .font(.callout)
                     .foregroundStyle(endedLabelColor)
             } else {
-                Label(
-                    timer.isPaused ? "Resume" : "Pause",
-                    systemImage: timer.isPaused ? "play.fill" : "pause.fill"
-                )
-                .labelStyle(.titleAndIcon)
-                .font(.body)
-                .foregroundStyle(timer.isRunning ? .primary : .secondary)
+                pauseToggleLabel
+                    .font(.body)
+                    .foregroundStyle(timer.isRunning ? .primary : .secondary)
             }
         }
         .contentShape(Rectangle())
+    }
+
+    @ViewBuilder
+    private var pauseToggleLabel: some View {
+        let label = Label(
+            timer.isPaused ? "Resume" : "Pause",
+            systemImage: timer.isPaused ? "play.fill" : "pause.fill"
+        )
+        if isCompact {
+            label.labelStyle(.iconOnly)
+        } else {
+            label.labelStyle(.titleAndIcon)
+        }
     }
 }

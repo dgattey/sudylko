@@ -1,7 +1,8 @@
 import Foundation
 
-/// All save-file disk I/O (load, encode, UserDefaults). Callers on the main actor snapshot
-/// `SavedGameState` first, then invoke these from a detached task or `enqueueSave`.
+/// All save-file disk I/O (load, encode, UserDefaults), serialized on one queue so every read sees
+/// the writes requested before it and writes never interleave their index updates. Callers on the
+/// main actor snapshot `SavedGameState` first.
 enum SaveLoadWork: Sendable {
     private static let ioQueue = DispatchQueue(label: "com.sudylko.save-io", qos: .utility)
 
@@ -16,7 +17,7 @@ enum SaveLoadWork: Sendable {
         let startedFromCustomSeed: Bool
     }
 
-    // MARK: - Writes (serialized background queue)
+    // MARK: - Writes
 
     static func enqueueSave(_ state: SavedGameState) {
         ioQueue.async {
@@ -24,44 +25,63 @@ enum SaveLoadWork: Sendable {
         }
     }
 
-    // MARK: - Reads (call from `Task.detached` only)
-
-    static func restorePayload(saveID: UUID) -> RestorePayload? {
-        guard let state = GameSaveStore.load(id: saveID),
-              let template = puzzleTemplate(for: state) else { return nil }
-        return RestorePayload(state: state, template: template)
-    }
-
-    static func load(id: UUID) -> SavedGameState? {
-        GameSaveStore.load(id: id)
-    }
-
-    static func summaries() -> [SaveSlotSummary] {
-        GameSaveStore.summaries()
-    }
-
     static func archive(id: UUID) {
-        GameSaveStore.archive(id: id)
+        ioQueue.async {
+            GameSaveStore.archive(id: id)
+        }
     }
 
     static func deleteAll() {
-        GameSaveStore.deleteAll()
+        ioQueue.async {
+            GameSaveStore.deleteAll()
+        }
     }
 
     static func delete(id: UUID) {
-        GameSaveStore.delete(id: id)
+        ioQueue.async {
+            GameSaveStore.delete(id: id)
+        }
     }
 
     static func deleteArchived() {
-        GameSaveStore.deleteArchived()
+        ioQueue.async {
+            GameSaveStore.deleteArchived()
+        }
     }
 
     #if DEBUG
-    @discardableResult
-    static func debugSeedCompletedGame() -> UUID {
-        GameSaveStore.debugSeedCompletedGame()
+    static func debugSeedCompletedGame() {
+        ioQueue.async {
+            GameSaveStore.debugSeedCompletedGame()
+        }
     }
     #endif
+
+    // MARK: - Reads
+
+    static func restorePayload(saveID: UUID) async -> RestorePayload? {
+        await afterPendingWrites {
+            guard let state = GameSaveStore.load(id: saveID),
+                  let template = puzzleTemplate(for: state) else { return nil }
+            return RestorePayload(state: state, template: template)
+        }
+    }
+
+    static func load(id: UUID) async -> SavedGameState? {
+        await afterPendingWrites { GameSaveStore.load(id: id) }
+    }
+
+    static func summaries() async -> [SaveSlotSummary] {
+        await afterPendingWrites { GameSaveStore.summaries() }
+    }
+
+    private static func afterPendingWrites<T: Sendable>(_ read: @escaping @Sendable () -> T) async -> T {
+        await withCheckedContinuation { continuation in
+            ioQueue.async {
+                continuation.resume(returning: read())
+            }
+        }
+    }
 
     static func newGamePayload(
         puzzleSeed: PuzzleSeed,

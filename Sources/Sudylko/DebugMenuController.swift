@@ -3,6 +3,7 @@ import AppKit
 import Foundation
 
 /// Native AppKit Debug menu (replaces SwiftUI `CommandMenu`, which renders non-standard chrome on macOS).
+@MainActor
 @objc final class DebugMenuController: NSObject {
     static let shared = DebugMenuController()
 
@@ -23,7 +24,7 @@ import Foundation
             object: NSApp,
             queue: .main
         ) { _ in
-            insertIfMissing()
+            MainActor.assumeIsolated { insertIfMissing() }
         }
         insertIfMissing()
     }
@@ -182,9 +183,7 @@ import Foundation
     }
 
     @objc private func seedDoneGame(_ sender: Any?) {
-        Task { @MainActor in
-            _ = SaveLoadWork.debugSeedCompletedGame()
-        }
+        SaveLoadWork.debugSeedCompletedGame()
     }
 
     @objc private func requestDeleteAllSaves(_ sender: Any?) {

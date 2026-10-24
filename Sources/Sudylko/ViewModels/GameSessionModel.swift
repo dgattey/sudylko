@@ -1,12 +1,13 @@
-import Combine
+import Observation
 import SudylkoShared
 import SwiftUI
 
 /// The window's play session: which save is open, its live game and timer, the sidebar's save
 /// list, and the achievement celebrations it unlocks. `ContentView` owns the window chrome and
 /// modals and forwards platform events (activity, settings, appearance) here.
+@Observable
 @MainActor
-final class GameSessionModel: ObservableObject {
+final class GameSessionModel {
     private enum Keys {
         static let lastDifficulty = "lastDifficulty"
         static let lastFocusedSaveID = "lastFocusedSaveID"
@@ -16,31 +17,28 @@ final class GameSessionModel: ObservableObject {
 
     static let navigationAnimation: Animation = .easeInOut(duration: 0.25)
 
-    @Published private(set) var game: GameViewModel?
+    private(set) var game: GameViewModel?
     /// Bound by the sidebar; `ContentView` routes changes to `handleActiveSaveIDChange`.
-    @Published var activeSaveID: UUID?
+    var activeSaveID: UUID?
     /// Avoids re-reading the active save from disk when persisting on switch.
-    @Published private(set) var activeSaveMetadata: SavePersistMetadata?
-    @Published private(set) var saveSlots: [SaveSlotSummary] = []
-    @Published private(set) var activeCelebrations: [AchievementID] = []
-    @Published private(set) var isLoadingPuzzle = false
-    @Published private(set) var isPuzzleEndBannerVisible = false
+    private(set) var activeSaveMetadata: SavePersistMetadata?
+    private(set) var saveSlots: [SaveSlotSummary] = []
+    private(set) var activeCelebrations: [AchievementID] = []
+    private(set) var isLoadingPuzzle = false
+    private(set) var isPuzzleEndBannerVisible = false
 
     let puzzleTimer = PuzzleTimer()
 
-    private let appAccent: AppAccentModel
-    private let randomPuzzlePrep = RandomPuzzlePrepCache()
-    private var celebrationQueue: [[AchievementID]] = []
-    private var autoPausedForInactive = false
-    private var saveLoadTask: Task<Void, Never>?
-    private var timerChanges: AnyCancellable?
+    @ObservationIgnored private let appAccent: AppAccentModel
+    @ObservationIgnored private let randomPuzzlePrep = RandomPuzzlePrepCache()
+    @ObservationIgnored private var celebrationQueue: [[AchievementID]] = []
+    @ObservationIgnored private var autoPausedForInactive = false
+    /// Whether the app is inactive, Settings is open, or the window is minimized, so a timer that starts now pauses.
+    @ObservationIgnored private var isAutoPauseHeld = false
+    @ObservationIgnored private var saveLoadTask: Task<Void, Never>?
 
     init(appAccent: AppAccentModel) {
         self.appAccent = appAccent
-        // Views render the timer through this model, so its ticks re-render them too.
-        timerChanges = puzzleTimer.objectWillChange.sink { [weak self] _ in
-            self?.objectWillChange.send()
-        }
     }
 
     var isInGame: Bool {
@@ -74,23 +72,25 @@ final class GameSessionModel: ObservableObject {
     func start() {
         refreshSaveSlotsInBackground()
         randomPuzzlePrep.schedulePrepForAllDifficulties()
-        Task {
-            if let id = UUID(uuidString: lastFocusedSaveIDString),
-               await Task.detached(priority: .utility) { SaveLoadWork.load(id: id) }.value == nil {
-                lastFocusedSaveIDString = ""
-            }
-            await restoreLastSessionIfNeeded()
-        }
+        Task { await restoreLastSessionIfNeeded() }
     }
 
+    /// Yields to any game started or selected first, such as `--initial-view game`, whichever finishes loading first.
     private func restoreLastSessionIfNeeded() async {
-        guard !isInGame else { return }
-        guard let id = UUID(uuidString: lastFocusedSaveIDString) else { return }
-        let state = await Task.detached(priority: .utility) {
-            SaveLoadWork.load(id: id)
-        }.value
-        guard let state, state.outcome == .playing else { return }
-        await performSaveSwitch(to: id)
+        guard !hasRequestedGame, let id = UUID(uuidString: lastFocusedSaveIDString) else { return }
+        let state = await SaveLoadWork.load(id: id)
+        guard !hasRequestedGame else { return }
+        guard let state else {
+            lastFocusedSaveIDString = ""
+            return
+        }
+        guard state.outcome == .playing else { return }
+        switchToSave(id: id)
+    }
+
+    /// Every new game and save switch runs as `saveLoadTask`, so one exists once anything opened a game.
+    private var hasRequestedGame: Bool {
+        saveLoadTask != nil
     }
 
     // MARK: - Starting and leaving games
@@ -139,6 +139,7 @@ final class GameSessionModel: ObservableObject {
         }
         game.replayCurrentPuzzle()
         puzzleTimer.start()
+        holdAutoPauseIfNeeded()
         if var metadata = activeSaveMetadata {
             metadata.statsCompletionRecorded = false
             activeSaveMetadata = metadata
@@ -247,6 +248,7 @@ final class GameSessionModel: ObservableObject {
         }
         applyGameplaySettingsToActiveGame()
         puzzleTimer.start()
+        holdAutoPauseIfNeeded()
         updateDockIcon()
         randomPuzzlePrep.schedulePrepForAllDifficulties()
     }
@@ -274,7 +276,8 @@ final class GameSessionModel: ObservableObject {
             return
         }
         guard let newID else { return }
-        if newID == oldID, game != nil, lastFocusedSaveIDString == newID.uuidString {
+        // The session sets `activeSaveID` itself after loading a game; that game is already open.
+        if game != nil, lastFocusedSaveIDString == newID.uuidString {
             return
         }
         switchToSave(id: newID)
@@ -296,16 +299,10 @@ final class GameSessionModel: ObservableObject {
         isLoadingPuzzle = true
         defer { isLoadingPuzzle = false }
 
-        let outgoing = captureOutgoingSave(excluding: id)
-
-        async let incoming = Task.detached(priority: .userInitiated) {
-            SaveLoadWork.restorePayload(saveID: id)
-        }
-        if let outgoing {
+        if let outgoing = captureOutgoingSave(excluding: id) {
             SaveLoadWork.enqueueSave(outgoing)
         }
-
-        let payload = await incoming.value
+        let payload = await SaveLoadWork.restorePayload(saveID: id)
 
         guard !Task.isCancelled else { return }
 
@@ -346,12 +343,19 @@ final class GameSessionModel: ObservableObject {
         refreshSaveSlotsInBackground()
     }
 
+    /// Loaded games run, except under the auto-pause hold, where they pause until the hold lifts.
     private func resumeLoadedGameIfNeeded() {
-        guard let game, !game.isPuzzleEnded else { return }
-        guard puzzleTimer.isRunning else { return }
-        if puzzleTimer.isPaused {
-            puzzleTimer.resume()
+        guard let game, !game.isPuzzleEnded, puzzleTimer.isRunning else { return }
+        guard isAutoPauseHeld else {
+            if puzzleTimer.isPaused {
+                puzzleTimer.resume()
+            }
+            return
         }
+        if !puzzleTimer.isPaused {
+            puzzleTimer.pause()
+        }
+        autoPausedForInactive = true
     }
 
     // MARK: - Persistence
@@ -394,11 +398,8 @@ final class GameSessionModel: ObservableObject {
     }
 
     private func refreshSaveSlotsInBackground() {
-        Task.detached(priority: .utility) {
-            let slots = SaveLoadWork.summaries()
-            await MainActor.run {
-                self.saveSlots = slots
-            }
+        Task {
+            saveSlots = await SaveLoadWork.summaries()
         }
     }
 
@@ -407,8 +408,11 @@ final class GameSessionModel: ObservableObject {
     func handleSavesDidChange(_ notification: Notification) {
         if notification.object as? SavesChangeReason == .deleteAll {
             lastFocusedSaveIDString = ""
+            // Not `goHome`, which would save the deleted game again.
             if isInGame {
-                goHome()
+                withAnimation(Self.navigationAnimation) {
+                    clearActiveGameState()
+                }
             }
         }
         refreshSaveSlotsInBackground()
@@ -431,25 +435,21 @@ final class GameSessionModel: ObservableObject {
     func archiveSave(id: UUID) {
         let isCurrentGame = activeSaveID == id && isInGame
 
-        Task.detached(priority: .utility) {
-            if let state = SaveLoadWork.load(id: id),
+        Task {
+            if let state = await SaveLoadWork.load(id: id),
                !state.isArchived,
                state.outcome == .playing,
                let abandoned = AchievementStore.recordAbandonedSave(difficulty: state.difficulty) {
-                await MainActor.run {
-                    self.enqueueCelebrations([abandoned])
-                }
+                enqueueCelebrations([abandoned])
             }
             SaveLoadWork.archive(id: id)
-            await MainActor.run {
-                if self.lastFocusedSaveIDString == id.uuidString {
-                    self.lastFocusedSaveIDString = ""
-                }
-                self.refreshSaveSlotsInBackground()
-                guard isCurrentGame else { return }
-                withAnimation(Self.navigationAnimation) {
-                    self.clearActiveGameState()
-                }
+            if lastFocusedSaveIDString == id.uuidString {
+                lastFocusedSaveIDString = ""
+            }
+            refreshSaveSlotsInBackground()
+            guard isCurrentGame else { return }
+            withAnimation(Self.navigationAnimation) {
+                clearActiveGameState()
             }
         }
     }
@@ -583,10 +583,18 @@ final class GameSessionModel: ObservableObject {
     /// Pauses the running puzzle while the app is inactive, settings are open, or the window is
     /// minimized, and resumes only a pause it started itself.
     func updateAutoPause(hold: Bool) {
+        isAutoPauseHeld = hold
         if hold {
             pauseForAutoInterruptIfNeeded()
         } else {
             resumeAfterAutoPauseIfNeeded()
+        }
+    }
+
+    /// The hold only reacts to changes, so a timer that starts or resumes during one pauses here.
+    private func holdAutoPauseIfNeeded() {
+        if isAutoPauseHeld {
+            pauseForAutoInterruptIfNeeded()
         }
     }
 

@@ -1,31 +1,27 @@
 #if os(macOS)
+import DylUI
 import SwiftUI
-import SudylkoShared
 
 @main
 struct SudylkoApp: App {
     @NSApplicationDelegateAdaptor(SudylkoAppDelegate.self) private var appDelegate
-    @StateObject private var appCommands = AppCommandState()
-    @StateObject private var appAccent = AppAccentModel()
+    @State private var appCommands = AppCommandState()
+    @State private var appAccent: AppAccentModel
+    @State private var session: GameSessionModel
+
+    init() {
+        let appAccent = AppAccentModel()
+        _appAccent = State(initialValue: appAccent)
+        _session = State(initialValue: GameSessionModel(appAccent: appAccent))
+    }
 
     var body: some Scene {
-        WindowGroup {
-            ContentView(appAccent: appAccent)
-                .environmentObject(appCommands)
-                .environmentObject(appAccent)
+        AppWindow("Sudylko", palette: appAccent.palette, defaultSize: CGSize(width: 820, height: 720)) {
+            ContentView(session: session)
+                .environment(appCommands)
+                .environment(appAccent)
                 .appAccentPropagation(appAccent)
-        }
-        .defaultSize(width: 820, height: 720)
-        .windowToolbarStyle(.unified(showsTitle: false))
-        .commands {
-            CommandGroup(replacing: .appSettings) {
-                Button {
-                    NotificationCenter.default.post(name: .openSettings, object: nil)
-                } label: {
-                    Label("Settings…", systemImage: "gearshape")
-                }
-                .keyboardShortcut(",", modifiers: .command)
-            }
+        } commands: {
             CommandGroup(replacing: .pasteboard) {}
             CommandGroup(replacing: .textEditing) {}
             CommandGroup(replacing: .undoRedo) {
@@ -71,6 +67,9 @@ struct SudylkoApp: App {
                 }
                 .keyboardShortcut("?", modifiers: .shift)
             }
+        }
+        SettingsWindow(palette: appAccent.palette) {
+            SudylkoSettings(appAccent: appAccent, appCommands: appCommands)
         }
     }
 }

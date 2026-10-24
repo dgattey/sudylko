@@ -1,7 +1,8 @@
+import SudylkoShared
 import SwiftUI
 
 struct BoardView: View {
-    @ObservedObject var game: GameViewModel
+    let game: GameViewModel
     @Environment(\.colorScheme) private var colorScheme
     var accent: AppAccentColor = .blue
 

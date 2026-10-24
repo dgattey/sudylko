@@ -1,57 +1,58 @@
-import Combine
 import Foundation
+import Observation
 import SwiftUI
 
 /// Board + `outcome` are puzzle state (`puzzleRevision`). Selection, pencil mode, etc. are session (`sessionRevision`).
+@Observable
 @MainActor
-final class GameViewModel: ObservableObject {
+final class GameViewModel {
     // MARK: - Puzzle (board + outcome)
 
-    @Published private(set) var puzzleSeed: PuzzleSeed
-    @Published var difficulty: GameDifficulty
-    @Published private(set) var startedFromCustomSeed = false
-    @Published private(set) var solution: [[Int]]
-    @Published private(set) var givens: Set<CellIndex>
-    @Published var values: [[Int?]]
-    @Published var notes: [[Set<Int>]]
-    @Published private(set) var outcome: PuzzleOutcome = .playing
-    @Published private(set) var mistakesThisPuzzle = 0
-    @Published private(set) var usedNotesThisPuzzle = false
+    private(set) var puzzleSeed: PuzzleSeed
+    var difficulty: GameDifficulty
+    private(set) var startedFromCustomSeed = false
+    private(set) var solution: [[Int]]
+    private(set) var givens: Set<CellIndex>
+    var values: [[Int?]]
+    var notes: [[Set<Int>]]
+    private(set) var outcome: PuzzleOutcome = .playing
+    private(set) var mistakesThisPuzzle = 0
+    private(set) var usedNotesThisPuzzle = false
     /// Bumped after board/outcome edits; triggers puzzle persist in `ContentView`.
-    @Published private(set) var puzzleRevision = 0
+    private(set) var puzzleRevision = 0
 
     // MARK: - Session UI (persisted via `sessionRevision`, not each cell fill)
 
-    @Published var isPencilMode = false
-    @Published var selected: CellIndex?
-    @Published var highlightedDigit: Int?
+    var isPencilMode = false
+    var selected: CellIndex?
+    var highlightedDigit: Int?
     /// Bumped when session chrome changes (selection, pencil mode, etc.).
-    @Published private(set) var sessionRevision = 0
-    @Published var pulseRows: Set<Int> = []
-    @Published var pulseCols: Set<Int> = []
-    @Published var pulseBoxes: Set<Int> = []
-    @Published var pulseDigits: Set<Int> = []
-    @Published private(set) var puzzleCompletePulseGeneration: UInt = 0
+    private(set) var sessionRevision = 0
+    var pulseRows: Set<Int> = []
+    var pulseCols: Set<Int> = []
+    var pulseBoxes: Set<Int> = []
+    var pulseDigits: Set<Int> = []
+    private(set) var puzzleCompletePulseGeneration: UInt = 0
 
     // MARK: - Derived / settings
 
-    @Published var mistakeCells: Set<CellIndex> = []
-    var revealMistakesImmediately = false
-    var impossibleMode = false
+    var mistakeCells: Set<CellIndex> = []
+    @ObservationIgnored var revealMistakesImmediately = false
+    @ObservationIgnored var impossibleMode = false
     /// When false, board and keyboard input are ignored (paused, unfocused, or complete).
-    var isInputEnabled = true
-    @Published private(set) var canUndo = false
-    @Published private(set) var canRedo = false
-    @Published private(set) var canDelete = false
+    @ObservationIgnored var isInputEnabled = true
+    private(set) var canUndo = false
+    private(set) var canRedo = false
+    private(set) var canDelete = false
 
     var isPuzzleEnded: Bool { outcome.isEnded }
 
-    private var undoStack: [PuzzleSnapshot] = []
-    private var redoStack: [PuzzleSnapshot] = []
-    private var completedRows: Set<Int> = []
-    private var completedCols: Set<Int> = []
-    private var completedBoxes: Set<Int> = []
-    private var completedDigits: Set<Int> = []
+    @ObservationIgnored private var undoStack: [PuzzleSnapshot] = []
+    @ObservationIgnored private var redoStack: [PuzzleSnapshot] = []
+    @ObservationIgnored private var completedRows: Set<Int> = []
+    @ObservationIgnored private var completedCols: Set<Int> = []
+    @ObservationIgnored private var completedBoxes: Set<Int> = []
+    @ObservationIgnored private var completedDigits: Set<Int> = []
 
     init(
         puzzleSeed: PuzzleSeed,
@@ -605,9 +606,9 @@ final class GameViewModel: ObservableObject {
         clearPulseAfterDelay { self.pulseDigits.remove(digit) }
     }
 
-    private func clearPulseAfterDelay(_ remove: @escaping () -> Void) {
+    private func clearPulseAfterDelay(_ remove: @escaping @MainActor () -> Void) {
         Task {
-            try? await Task.sleep(nanoseconds: 920_000_000)
+            try? await Task.sleep(for: .milliseconds(920))
             remove()
         }
     }

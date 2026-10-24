@@ -12,7 +12,7 @@ struct SaveRowView: View, Equatable {
 
     @State private var isHovered = false
 
-    static func == (lhs: SaveRowView, rhs: SaveRowView) -> Bool {
+    nonisolated static func == (lhs: SaveRowView, rhs: SaveRowView) -> Bool {
         lhs.slot == rhs.slot
             && lhs.staticElapsed == rhs.staticElapsed
             && lhs.showsLiveTimer == rhs.showsLiveTimer

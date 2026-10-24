@@ -1,0 +1,33 @@
+# Sudylko app manifest, read by devkit, release-kit and the download site.
+# Schema: DylKit's Sources/DylManifest/DylAppManifest.swift. `swift run devkit checks` validates it.
+
+[app]
+name = "Sudylko"
+bundle-id = "com.sudylko.mac"
+platforms = { macos = "14.0", ios = "17.0" }
+category = "public.app-category.puzzle-games"
+
+[build]
+product = "Sudylko"
+entitlements = "Sudylko.entitlements"
+icon-generator = "scripts/generate-icon.swift"
+dock-tile-plugin = { product = "SudylkoDockTilePlugin", principal-class = "SudylkoDockTilePlugIn" }
+
+[ios]
+bundle-id = "com.sudylko.ios"
+simulator = "iPhone 17 Pro"
+
+[ios.info]
+"UISupportedInterfaceOrientations~ipad" = ["UIInterfaceOrientationPortrait", "UIInterfaceOrientationPortraitUpsideDown", "UIInterfaceOrientationLandscapeLeft", "UIInterfaceOrientationLandscapeRight"]
+
+[release]
+sparkle-public-key = "sparkle-public-key.txt"
+site-url = "https://sudylko.gattey.com"
+assets = "https://replacewithsudylkostore.public.blob.vercel-storage.com"
+artifacts-dir = "server/public"
+check-interval = 3600
+
+# Read by @dylkit/web for the download site. Screenshot paths are under release.artifacts-dir.
+[site]
+tagline = "A calm, keyboard-first Sudoku for the Mac, with seeded puzzles, notes, achievements and a timer in the Dock."
+accent = { light = "#007aff", dark = "#0a84ff" }

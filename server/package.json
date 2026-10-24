@@ -1,0 +1,24 @@
+{
+  "name": "sudylko-server",
+  "private": true,
+  "scripts": {
+    "dev": "next dev --port 3000",
+    "build": "next build",
+    "start": "next start --port 3000",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@dylkit/web": "https://frmtw5gxqbom2ooh.public.blob.vercel-storage.com/releases/v0.4.0/dylkit-web-0.4.0.tgz",
+    "next": "^15.3.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.0",
+    "@types/react": "^19.0.0",
+    "typescript": "^5.8.0"
+  },
+  "engines": {
+    "node": ">=22.18"
+  }
+}

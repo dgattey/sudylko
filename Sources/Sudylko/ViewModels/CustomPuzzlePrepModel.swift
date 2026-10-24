@@ -1,9 +1,10 @@
 import Foundation
-import SwiftUI
+import Observation
 
 /// Pre-generates a custom puzzle off the main thread while the seed sheet is open.
+@Observable
 @MainActor
-final class CustomPuzzlePrepModel: ObservableObject {
+final class CustomPuzzlePrepModel {
     enum Phase: Equatable {
         case idle
         case invalidInput
@@ -11,13 +12,13 @@ final class CustomPuzzlePrepModel: ObservableObject {
         case ready
     }
 
-    @Published private(set) var phase: Phase = .idle
-    @Published private(set) var readySeed: PuzzleSeed?
-    @Published private(set) var readyTemplate: GeneratedPuzzle?
+    private(set) var phase: Phase = .idle
+    private(set) var readySeed: PuzzleSeed?
+    private(set) var readyTemplate: GeneratedPuzzle?
 
-    private var debounceTask: Task<Void, Never>?
-    private var generationTask: Task<Void, Never>?
-    private var generationToken = 0
+    @ObservationIgnored private var debounceTask: Task<Void, Never>?
+    @ObservationIgnored private var generationTask: Task<Void, Never>?
+    @ObservationIgnored private var generationToken = 0
 
     var canStart: Bool {
         phase == .ready && readySeed != nil && readyTemplate != nil

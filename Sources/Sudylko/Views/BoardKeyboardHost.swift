@@ -4,7 +4,7 @@ import SwiftUI
 
 /// Invisible first responder for keyboard input without a focus ring on the board.
 struct BoardKeyboardHost: NSViewRepresentable {
-    @ObservedObject var game: GameViewModel
+    let game: GameViewModel
     var onTogglePause: () -> Void
     /// Return `true` when Escape was handled (e.g. closing settings).
     var onEscape: () -> Bool = { false }
@@ -51,7 +51,7 @@ struct BoardKeyboardHost: NSViewRepresentable {
         }
 
         fileprivate func reclaimFirstResponderIfNeeded() {
-            DispatchQueue.main.async { [weak self] in
+            Task { [weak self] in
                 guard let self, let window = self.window else { return }
                 if window.firstResponder !== self {
                     window.makeFirstResponder(self)
@@ -64,14 +64,8 @@ struct BoardKeyboardHost: NSViewRepresentable {
                 NotificationCenter.default.post(name: .deleteCell, object: nil)
                 return true
             }
-            if Self.isSpace(event) {
-                let handled: Bool
-                if Thread.isMainThread {
-                    handled = MainActor.assumeIsolated { handleTogglePauseKey() }
-                } else {
-                    handled = DispatchQueue.main.sync { MainActor.assumeIsolated { handleTogglePauseKey() } }
-                }
-                if handled { return true }
+            if Self.isSpace(event), handleTogglePauseKey() {
+                return true
             }
             return super.performKeyEquivalent(with: event)
         }
@@ -81,25 +75,17 @@ struct BoardKeyboardHost: NSViewRepresentable {
                 super.keyDown(with: event)
                 return
             }
-            let handled: Bool
-            if Thread.isMainThread {
-                handled = MainActor.assumeIsolated { processKeyDown(event) }
-            } else {
-                handled = DispatchQueue.main.sync { MainActor.assumeIsolated { processKeyDown(event) } }
-            }
-            if !handled {
+            if !processKeyDown(event) {
                 super.keyDown(with: event)
             }
         }
 
-        @MainActor
         private func handleTogglePauseKey() -> Bool {
             guard onTogglePause != nil else { return false }
             onTogglePause?()
             return true
         }
 
-        @MainActor
         private func processKeyDown(_ event: NSEvent) -> Bool {
             guard let game else { return false }
 
