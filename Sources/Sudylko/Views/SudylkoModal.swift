@@ -163,6 +163,9 @@ struct SudylkoDetailModalOverlay<Modal: View>: View {
                 .accessibilityAddTraits(.isButton)
 
             modal()
+                #if os(macOS)
+                .padding(SudylkoModalLayout.padding)
+                #endif
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         #if os(macOS)

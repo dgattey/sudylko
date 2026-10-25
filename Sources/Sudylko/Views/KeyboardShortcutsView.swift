@@ -28,7 +28,7 @@ struct KeyboardShortcutsView: View {
             .macOSTooltip("Close")
         }
         .padding(24)
-        .frame(width: 580)
+        .frame(maxWidth: 580)
         .sudylkoModalSurface()
         #endif
     }
