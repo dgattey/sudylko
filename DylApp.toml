@@ -23,7 +23,7 @@ simulator = "iPhone 17 Pro"
 [release]
 sparkle-public-key = "sparkle-public-key.txt"
 site-url = "https://sudylko.gattey.com"
-assets = "https://replacewithsudylkostore.public.blob.vercel-storage.com"
+assets = "https://enquwetsoqbtafs1.public.blob.vercel-storage.com"
 artifacts-dir = "server/public"
 check-interval = 3600
 
