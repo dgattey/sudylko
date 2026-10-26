@@ -7,6 +7,7 @@ DerivedData/
 build/
 .vercel/
 node_modules/
+/pnpm-lock.yaml
 .next/
 *.tsbuildinfo
 sparkle_private.key
