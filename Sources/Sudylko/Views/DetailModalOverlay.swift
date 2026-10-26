@@ -81,7 +81,7 @@ struct DetailModalOverlay: View {
                 .onDisappear { customPuzzlePrep.reset() }
             }
         } else if modals.showsKeyboardShortcuts {
-            // iOS presents shortcuts as a system sheet from the saves sheet.
+            // iOS never sets this flag; ContentView presents shortcuts as a system sheet there.
             #if os(macOS)
             SudylkoDetailModalOverlay(onDismiss: { modals.showsKeyboardShortcuts = false }) {
                 KeyboardShortcutsView()
