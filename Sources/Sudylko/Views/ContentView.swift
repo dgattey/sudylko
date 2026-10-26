@@ -223,6 +223,23 @@ struct ContentView: View {
                     }
                 }
         }
+        .sheet(isPresented: $modals.showsKeyboardShortcuts) { keyboardShortcutsSheet }
+    }
+
+    private var keyboardShortcutsSheet: some View {
+        NavigationStack {
+            KeyboardShortcutsView()
+                .navigationTitle("Keyboard shortcuts")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Close") {
+                            modals.showsKeyboardShortcuts = false
+                        }
+                    }
+                }
+        }
+        .environment(\.colorScheme, resolvedColorScheme)
     }
     #endif
 
