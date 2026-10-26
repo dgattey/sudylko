@@ -12,7 +12,7 @@ let package = Package(
         .library(name: "SudylkoDockTilePlugin", type: .dynamic, targets: ["SudylkoDockTilePlugin"]),
     ],
     dependencies: [
-        .package(url: "https://github.com/dgattey/dyl-kit", from: "0.5.0"),
+        .package(url: "https://github.com/dgattey/dyl-kit", from: "0.6.0"),
     ],
     targets: [
         .target(
