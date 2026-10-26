@@ -12,7 +12,10 @@ let package = Package(
         .library(name: "SudylkoDockTilePlugin", type: .dynamic, targets: ["SudylkoDockTilePlugin"]),
     ],
     dependencies: [
-        .package(url: "https://github.com/dgattey/dyl-kit", from: "0.6.1"),
+        .package(
+            url: "https://github.com/dgattey/dyl-kit",
+            revision: "7a1b007e2c074bb818424f8dbd1470aa3cf41c10"
+        ),
     ],
     targets: [
         .target(
@@ -37,10 +40,7 @@ let package = Package(
         ),
         .testTarget(
             name: "SudylkoLogicTests",
-            dependencies: [
-                "Sudylko",
-                .product(name: "DylTestSupport", package: "dyl-kit"),
-            ],
+            dependencies: ["Sudylko"],
             path: "Tests/SudylkoLogicTests"
         ),
     ]
