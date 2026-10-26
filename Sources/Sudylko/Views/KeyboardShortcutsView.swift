@@ -28,7 +28,7 @@ struct KeyboardShortcutsView: View {
             .macOSTooltip("Close")
         }
         .padding(24)
-        .frame(width: 580)
+        .frame(maxWidth: 580)
         .sudylkoModalSurface()
         #endif
     }
@@ -71,6 +71,10 @@ struct KeyboardShortcutsView: View {
                     KeyCap(systemImage: "delete.backward")
                     ShortcutOrLabel()
                     KeyCap(systemImage: "delete.forward")
+                }
+
+                shortcutRow("Turn notes mode on or off") {
+                    KeyCap("N", minWidth: 28)
                 }
 
                 shortcutRow("Save game and return home") {

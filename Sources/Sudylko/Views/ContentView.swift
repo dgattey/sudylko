@@ -25,6 +25,7 @@ struct ContentView: View {
     /// Tracks macOS system appearance when `appearanceMode == .system` (updated via distributed notification).
     @State private var systemColorScheme = AppearanceMode.systemColorScheme()
     #if os(iOS)
+    @State private var keyboardShortcutsPresenter: KeyboardShortcutsPresenter?
     @State private var showSavesSheet = false
     #else
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
@@ -148,7 +149,12 @@ struct ContentView: View {
                 toggleSidebar()
             }
             .onReceive(NotificationCenter.default.publisher(for: .showKeyboardShortcuts)) { _ in
+                #if os(iOS)
+                showSettings = false
+                keyboardShortcutsPresenter = showSavesSheet ? .savesSheet : .root
+                #else
                 modals.showsKeyboardShortcuts = true
+                #endif
             }
         #if DEBUG
             .onReceive(NotificationCenter.default.publisher(for: .requestDeleteAllSavesConfirmation)) { _ in
@@ -198,6 +204,7 @@ struct ContentView: View {
         NavigationStack {
             detailColumn
         }
+        .sheet(isPresented: keyboardShortcutsBinding(for: .root)) { keyboardShortcutsSheet }
         #else
         NavigationSplitView(columnVisibility: $columnVisibility) {
             sidebar
@@ -223,6 +230,44 @@ struct ContentView: View {
                     }
                 }
         }
+        .sheet(isPresented: keyboardShortcutsBinding(for: .savesSheet)) { keyboardShortcutsSheet }
+        .onDisappear {
+            if keyboardShortcutsPresenter == .savesSheet {
+                keyboardShortcutsPresenter = nil
+            }
+        }
+    }
+
+    private enum KeyboardShortcutsPresenter {
+        case root
+        case savesSheet
+    }
+
+    private func keyboardShortcutsBinding(for presenter: KeyboardShortcutsPresenter) -> Binding<Bool> {
+        Binding(
+            get: { keyboardShortcutsPresenter == presenter },
+            set: { isPresented in
+                if !isPresented, keyboardShortcutsPresenter == presenter {
+                    keyboardShortcutsPresenter = nil
+                }
+            }
+        )
+    }
+
+    private var keyboardShortcutsSheet: some View {
+        NavigationStack {
+            KeyboardShortcutsView()
+                .navigationTitle("Keyboard shortcuts")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Close") {
+                            keyboardShortcutsPresenter = nil
+                        }
+                    }
+                }
+        }
+        .environment(\.colorScheme, resolvedColorScheme)
     }
     #endif
 

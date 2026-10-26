@@ -81,9 +81,13 @@ struct DetailModalOverlay: View {
                 .onDisappear { customPuzzlePrep.reset() }
             }
         } else if modals.showsKeyboardShortcuts {
+            // iOS never sets this flag; ContentView presents shortcuts as a system sheet there.
+            #if os(macOS)
             SudylkoDetailModalOverlay(onDismiss: { modals.showsKeyboardShortcuts = false }) {
-                keyboardShortcutsSheet
+                KeyboardShortcutsView()
+                    .environment(\.colorScheme, colorScheme)
             }
+            #endif
         } else if modals.confirmsDeleteAllSaves {
             SudylkoDetailModalOverlay(onDismiss: { modals.confirmsDeleteAllSaves = false }) {
                 DeleteAllSavesModal(
@@ -122,26 +126,5 @@ struct DetailModalOverlay: View {
                 }
             )
         }
-    }
-
-    private var keyboardShortcutsSheet: some View {
-        #if os(iOS)
-        NavigationStack {
-            KeyboardShortcutsView()
-                .navigationTitle("Keyboard shortcuts")
-                .navigationBarTitleDisplayMode(.inline)
-                .toolbar {
-                    ToolbarItem(placement: .cancellationAction) {
-                        Button("Close") {
-                            modals.showsKeyboardShortcuts = false
-                        }
-                    }
-                }
-        }
-        .environment(\.colorScheme, colorScheme)
-        #else
-        KeyboardShortcutsView()
-            .environment(\.colorScheme, colorScheme)
-        #endif
     }
 }
