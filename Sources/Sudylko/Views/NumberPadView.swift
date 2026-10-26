@@ -1,3 +1,4 @@
+import SudylkoShared
 import SwiftUI
 #if canImport(AppKit)
 import AppKit
@@ -12,7 +13,7 @@ enum NumberPadStyle {
 }
 
 struct NumberPadView: View {
-    @ObservedObject var game: GameViewModel
+    let game: GameViewModel
     let style: NumberPadStyle
     var maxWidth: CGFloat
     var maxHeight: CGFloat = .infinity
@@ -57,7 +58,7 @@ struct NumberPadView: View {
         rowWraps(maxWidth) ? min(8, max(2, (maxWidth - 9 * 28) / 8)) : 8
     }
 
-    static func keySize(for maxWidth: CGFloat, style: NumberPadStyle, includesNote: Bool = false) -> CGFloat {
+    nonisolated static func keySize(for maxWidth: CGFloat, style: NumberPadStyle, includesNote: Bool = false) -> CGFloat {
         switch style {
         case .row:
             if rowWraps(maxWidth) {
@@ -74,7 +75,7 @@ struct NumberPadView: View {
         }
     }
 
-    static func requiredHeight(
+    nonisolated static func requiredHeight(
         for style: NumberPadStyle,
         maxWidth: CGFloat,
         boardSide: CGFloat = 0,
@@ -91,7 +92,7 @@ struct NumberPadView: View {
         }
     }
 
-    static func requiredWidth(for style: NumberPadStyle, maxHeight: CGFloat, boardSide: CGFloat = 0) -> CGFloat {
+    nonisolated static func requiredWidth(for style: NumberPadStyle, maxHeight: CGFloat, boardSide: CGFloat = 0) -> CGFloat {
         let cap = boardSide > 0 ? min(80, boardSide * 0.12) : 56
         let key = min(cap, max(32, (maxHeight - 18 - 8 * 3) / 4))
         return key * 3 + 8 * 2

@@ -14,7 +14,7 @@ struct EscapeKeyboardHost: NSViewRepresentable {
 
     func updateNSView(_ nsView: EscapeNSView, context: Context) {
         nsView.onEscape = onEscape
-        DispatchQueue.main.async {
+        Task {
             if let window = nsView.window, window.firstResponder !== nsView {
                 window.makeFirstResponder(nsView)
             }

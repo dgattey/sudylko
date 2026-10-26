@@ -2,11 +2,11 @@
 import AppKit
 import SwiftUI
 
-/// Aligns the NSWindow with the in-app appearance picker and publishes `NSApp.isActive`.
+/// Configures the NSWindow's chrome and minimum size and publishes `NSApp.isActive`. The window inherits the app's
+/// appearance from `NSApp.appearance`, which `AppAccentModel` sets.
 /// Window mutations are deferred off `updateNSView` — setting `isMovableByWindowBackground` during
 /// layout can crash SwiftUI's `NSHostingView` KVO (`LazyPreventsWindowDragFeature`).
 struct WindowConfigurator: NSViewRepresentable {
-    let appearanceMode: AppearanceMode
     var minimumWindowSize: CGSize = CGSize(width: 780, height: 640)
     @Binding var isAppActive: Bool
     @Binding var isWindowMiniaturized: Bool
@@ -28,20 +28,17 @@ struct WindowConfigurator: NSViewRepresentable {
 
     func updateNSView(_ nsView: ThemedWindowAnchor, context: Context) {
         context.coordinator.attach(anchor: nsView)
-        context.coordinator.scheduleApply(
-            appearanceMode: appearanceMode,
-            minimumSize: minimumWindowSize
-        )
+        context.coordinator.scheduleApply(minimumSize: minimumWindowSize)
     }
 
+    @MainActor
     final class Coordinator {
         @Binding private var isAppActive: Bool
         @Binding private var isWindowMiniaturized: Bool
         @Binding private var isWindowFullscreen: Bool
 
         private weak var anchor: ThemedWindowAnchor?
-        private var pendingApply: DispatchWorkItem?
-        private var lastAppearanceMode: AppearanceMode?
+        private var pendingApply: Task<Void, Never>?
         private var lastMinimumSize: CGSize?
 
         init(
@@ -56,7 +53,7 @@ struct WindowConfigurator: NSViewRepresentable {
 
         func attach(anchor: ThemedWindowAnchor) {
             self.anchor = anchor
-            anchor.onSystemAppearanceChange = { [weak self] in
+            anchor.onSystemAppearanceChange = {
                 NotificationCenter.default.post(name: .sudylkoSystemThemeDidChange, object: nil)
             }
             anchor.onApplicationActiveChange = { [weak self] active in
@@ -70,25 +67,18 @@ struct WindowConfigurator: NSViewRepresentable {
             }
         }
 
-        func scheduleApply(appearanceMode: AppearanceMode, minimumSize: CGSize) {
+        func scheduleApply(minimumSize: CGSize) {
             pendingApply?.cancel()
-            let work = DispatchWorkItem { [weak self] in
-                self?.apply(appearanceMode: appearanceMode, minimumSize: minimumSize)
+            pendingApply = Task { [weak self] in
+                guard !Task.isCancelled else { return }
+                self?.apply(minimumSize: minimumSize)
             }
-            pendingApply = work
-            DispatchQueue.main.async(execute: work)
         }
 
-        private func apply(appearanceMode: AppearanceMode, minimumSize: CGSize) {
+        private func apply(minimumSize: CGSize) {
             guard let window = anchor?.window else { return }
 
             anchor?.configureWindowChromeIfNeeded(window)
-
-            let appearance = appearanceMode.resolvedNSAppearance() ?? NSApp.effectiveAppearance
-            if lastAppearanceMode != appearanceMode || window.appearance != appearance {
-                window.appearance = appearance
-                lastAppearanceMode = appearanceMode
-            }
 
             if lastMinimumSize != minimumSize {
                 window.minSize = minimumSize
@@ -142,7 +132,7 @@ final class ThemedWindowAnchor: NSView {
         if let window {
             configureWindowChromeIfNeeded(window)
         }
-        installThemeObserverIfNeeded()
+        updateThemeObserver()
         installApplicationActiveObserversIfNeeded()
         installWindowMiniaturizeObserversIfNeeded()
         installWindowFullscreenObserversIfNeeded()
@@ -163,14 +153,22 @@ final class ThemedWindowAnchor: NSView {
         window.titlebarSeparatorStyle = .none
     }
 
-    private func installThemeObserverIfNeeded() {
+    /// Observers come and go with the window, because a main-actor view's deinit can't touch its isolated state.
+    private func updateThemeObserver() {
+        guard window != nil else {
+            if let themeObserver {
+                DistributedNotificationCenter.default().removeObserver(themeObserver)
+            }
+            themeObserver = nil
+            return
+        }
         guard themeObserver == nil else { return }
         themeObserver = DistributedNotificationCenter.default().addObserver(
             forName: AppearanceMode.systemThemeDidChangeNotification,
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            self?.onSystemAppearanceChange?()
+            MainActor.assumeIsolated { self?.onSystemAppearanceChange?() }
         }
     }
 
@@ -183,14 +181,14 @@ final class ThemedWindowAnchor: NSView {
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            self?.onApplicationActiveChange?(false)
+            MainActor.assumeIsolated { self?.onApplicationActiveChange?(false) }
         })
         appActiveObservers.append(center.addObserver(
             forName: NSApplication.didBecomeActiveNotification,
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            self?.onApplicationActiveChange?(true)
+            MainActor.assumeIsolated { self?.onApplicationActiveChange?(true) }
         })
         onApplicationActiveChange?(NSApp.isActive)
     }
@@ -212,14 +210,14 @@ final class ThemedWindowAnchor: NSView {
             object: window,
             queue: .main
         ) { [weak self] _ in
-            self?.onWindowMiniaturizedChange?(true)
+            MainActor.assumeIsolated { self?.onWindowMiniaturizedChange?(true) }
         })
         windowMiniaturizeObservers.append(center.addObserver(
             forName: NSWindow.didDeminiaturizeNotification,
             object: window,
             queue: .main
         ) { [weak self] _ in
-            self?.onWindowMiniaturizedChange?(false)
+            MainActor.assumeIsolated { self?.onWindowMiniaturizedChange?(false) }
         })
         onWindowMiniaturizedChange?(window.isMiniaturized)
     }
@@ -248,32 +246,21 @@ final class ThemedWindowAnchor: NSView {
                 object: window,
                 queue: .main
             ) { [weak self] notification in
-                self?.handleWindowFullscreenNotification(notification)
+                let name = notification.name
+                MainActor.assumeIsolated { self?.handleWindowFullscreenNotification(name) }
             })
         }
         onWindowFullscreenChange?(window.styleMask.contains(.fullScreen))
     }
 
-    private func handleWindowFullscreenNotification(_ notification: Notification) {
-        switch notification.name {
+    private func handleWindowFullscreenNotification(_ name: Notification.Name) {
+        switch name {
         case NSWindow.willEnterFullScreenNotification, NSWindow.didEnterFullScreenNotification:
             onWindowFullscreenChange?(true)
         case NSWindow.willExitFullScreenNotification, NSWindow.didExitFullScreenNotification:
             onWindowFullscreenChange?(false)
         default:
             onWindowFullscreenChange?(window?.styleMask.contains(.fullScreen) == true)
-        }
-    }
-
-    deinit {
-        if let themeObserver {
-            DistributedNotificationCenter.default().removeObserver(themeObserver)
-        }
-        for observer in windowMiniaturizeObservers {
-            NotificationCenter.default.removeObserver(observer)
-        }
-        for observer in windowFullscreenObservers {
-            NotificationCenter.default.removeObserver(observer)
         }
     }
 }

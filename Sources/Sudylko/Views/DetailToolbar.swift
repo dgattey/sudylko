@@ -6,8 +6,7 @@ struct DetailToolbar: ToolbarContent {
     let gameOutcome: PuzzleOutcome?
     let timer: PuzzleTimer
     let isArchived: Bool
-    let colorScheme: ColorScheme
-    @Binding var showSettings: Bool
+    let onOpenSettings: () -> Void
     let onGoHome: () -> Void
     let onArchive: () -> Void
     let onRestart: () -> Void
@@ -57,16 +56,9 @@ struct DetailToolbar: ToolbarContent {
     }
 
     private var settingsButton: some View {
-        Button("Settings", systemImage: "gearshape") {
-            showSettings = true
-        }
-        .font(.body)
-        .help("Open appearance and puzzle settings")
-        .popover(isPresented: $showSettings, arrowEdge: .bottom) {
-            SettingsPopoverView()
-                .environment(\.colorScheme, colorScheme)
-                .preferredColorScheme(colorScheme)
-        }
+        Button("Settings", systemImage: "gearshape", action: onOpenSettings)
+            .font(.body)
+            .help("Open appearance and puzzle settings")
     }
 
     private static func endedLabel(for outcome: PuzzleOutcome) -> String? {

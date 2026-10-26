@@ -1,3 +1,4 @@
+import DylCore
 import Foundation
 
 struct DifficultyPlayerStats: Codable, Equatable {
@@ -173,7 +174,7 @@ enum PlayerStatsStore {
 
     static func load() -> PlayerLifetimeStats {
         guard let data = UserDefaults.standard.data(forKey: statsKey),
-              var stats = try? JSONDecoder().decode(PlayerLifetimeStats.self, from: data) else {
+              var stats = JSONDecoder().decodeOrLog(PlayerLifetimeStats.self, from: data) else {
             return PlayerLifetimeStats()
         }
         let repaired = stats

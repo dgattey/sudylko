@@ -99,6 +99,7 @@ struct PuzzleSeed: Codable, Equatable, Hashable, Sendable {
     }
 
     /// Uses the pasteboard when it contains a valid puzzle number.
+    @MainActor
     static func prefillFromClipboard(defaultDifficulty: GameDifficulty) -> (text: String, difficulty: GameDifficulty)? {
         guard let raw = Clipboard.readString()?.trimmingCharacters(in: .whitespacesAndNewlines),
               !raw.isEmpty,

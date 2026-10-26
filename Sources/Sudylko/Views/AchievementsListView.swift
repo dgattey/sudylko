@@ -1,3 +1,4 @@
+import SudylkoShared
 import SwiftUI
 
 /// All achievements and lock state (sidebar or inspector).

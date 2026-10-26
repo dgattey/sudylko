@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct CustomPuzzleSheet: View {
-    @ObservedObject var prep: CustomPuzzlePrepModel
+    let prep: CustomPuzzlePrepModel
     @Binding var seedInput: String
     @Binding var difficulty: GameDifficulty
     var onCancel: () -> Void

@@ -4,101 +4,35 @@ Sudylko is an offline puzzle game for macOS and iOS, built with SwiftUI. Puzzles
 
 ## Requirements
 
-- macOS 14+ (primary desktop build)
-- iOS 17+ (iPhone and iPad via Xcode)
-- Xcode 15+ or Swift 5.9+ toolchain
+- macOS 14+ (primary desktop build), iOS 17+ (iPhone and iPad)
+- Xcode 26.5 toolchain and [mise](https://mise.jdx.dev) (`mise install` pins SwiftLint and Node)
 
 ## Project layout
 
-This repo is a Swift Package Manager app, not a web or Xcode-project monorepo.
+Sudylko is a [DylKit](https://github.com/dgattey/dyl-kit) app: one SwiftPM executable target plus its Dock tile plug-in, with bundle, signing and release settings in `DylApp.toml`. There is no Xcode project.
 
+| Path | Role |
+| --- | --- |
+| `Sources/Sudylko/` | The app (SwiftUI, menus, saves, achievements) |
+| `Sources/Sudylko/Engine/` | `PuzzleGenerator`, `PuzzleSeed`, `SeededRNG` |
+| `Sources/SudylkoShared/` | The accent colors and Dock icon renderer, shared by the app and the plug-in |
+| `Sources/SudylkoDockTilePlugin/` | Draws the Dock icon in the chosen accent and appearance while Sudylko is quit |
+| `DylApp.toml` | Bundle IDs, platforms, icon, release feed and download-site settings |
+| `scripts/generate-icon.swift` | Draws the app icon into `build/` for the bundler |
+| `scripts/generate-sparkle-key.sh` | One-time Sparkle key pair setup |
+| `server/` | The download site at sudylko.gattey.com, built on `@dylkit/web` |
+| `.github/workflows/dylkit.yml` | Calls DylKit's verify check and release workflow at the pinned DylKit version |
+| `.github/workflows/release-info.yml` | Calls DylKit's PR body check, which reruns when the description is edited |
 
-| Path                           | Role                                           |
-| ------------------------------ | ---------------------------------------------- |
-| `Sources/Sudylko/`             | Main app (SwiftUI, menus, saves, achievements) |
-| `Sources/SudylkoShared/`       | Shared types and dock icon rendering           |
-| `Sources/SudylkoDockTilePlugin/` | `NSDockTilePlugIn` (quit-state Dock icon)    |
-| `App/SudylkoDockTile/Info.plist` | Plug-in bundle metadata                      |
-| `Sources/Sudylko/Engine/`      | `PuzzleGenerator`, `PuzzleSeed`, `SeededRNG`   |
-| `App/Info.plist`               | Bundle metadata (`com.sudylko.mac`)            |
-| `scripts/build-app.sh`         | Default build, icon, assemble `.app`, launch   |
-| `scripts/generate-app-icon.sh` | Icon pipeline wrapper                          |
-| `Sudylko.app`                  | Assembled debug bundle (gitignored)            |
-| `iOS/Info.plist`               | Reference bundle metadata (`com.sudylko.ios`)  |
-| `scripts/relaunch-mac.sh`      | Rebuild `.app`, quit, `open -n` (macOS verify loop) |
-| `scripts/relaunch-ios.sh`      | `xcodebuild`, install, launch on default simulator   |
-| `scripts/relaunch-all.sh`      | macOS then iOS relaunch in one command               |
-| `scripts/build-ios.sh`         | Optional `xcodebuild` helper for iOS Simulator   |
+## Building, running and checking
 
+DylKit's [`apple-dev-loop`](https://github.com/dgattey/dyl-kit/blob/main/skills/apple-dev-loop/SKILL.md) skill is the guide: `swift run devkit relaunch` builds `build/Sudylko Dev.app` and opens it in the background, `swift run devkit ios --run` does the same on the iOS Simulator, and `swift run devkit verify` runs what CI runs. Sudylko's `--initial-view` names are `game` and `settings/<page>` (`appearance`, `gameplay`, `software-updates`, `about`). devkit launches never become active, so they show the board even with **Hide numbers when inactive** on; the puzzle timer stays paused, as it does whenever Sudylko is inactive.
 
-## Build and run (macOS)
+The **Debug** menu (unlock achievements, reset stats, delete all saves) and other `#if DEBUG` tooling only compile into debug builds, which is what `swift run devkit relaunch` builds.
 
-```bash
-cd ~/repos/sudylko
-./scripts/build-app.sh
-```
+## Releasing
 
-The script:
-
-1. Runs `swift build -c debug` (binaries under `.build/debug/`).
-2. Assembles `Sudylko.app` in the repo root.
-3. Regenerates `App/Icon.icns` from the debug binary and copies it into the `.app` (generated assets are gitignored; run `scripts/generate-app-icon.sh` alone only when needed).
-4. Quits any running Sudylko and opens a fresh instance with `open -n`.
-
-Use this script as the default verify loop after UI or behavior changes. A bare `open Sudylko.app` without rebuilding can show stale code.
-
-## Quick relaunch (dev workflow)
-
-After **macOS-only** changes (menus, dock icon, Mac-only views):
-
-```bash
-./scripts/relaunch-mac.sh
-```
-
-After **iOS-only** or **shared SwiftUI** (`SudylkoShared`, views on both platforms), relaunch iOS or both:
-
-```bash
-./scripts/relaunch-ios.sh
-./scripts/relaunch-all.sh
-```
-
-`relaunch-mac.sh` runs `swift build -c debug`, assembles `Sudylko.app`, regenerates the icon, quits Sudylko, and opens a fresh instance with `open -n`. `relaunch-ios.sh` builds the **Sudylko** scheme for **iPhone 17 Pro (iOS 26.5)** by default, installs the `.app` on that simulator, and launches `com.sudylko.ios`. Override with `DESTINATION` or `SIM_UDID` if needed.
-
-
-
-### Debug vs release
-
-The **Debug** menu (unlock achievements, reset stats, delete all saves) and other `#if DEBUG` tooling only compile into **debug** builds. The script above builds debug on purpose.
-
-For a release binary without debug tooling:
-
-```bash
-swift build -c release
-```
-
-There is no separate release packaging script yet. Distribution builds should use `-c release` and must not rely on the Debug menu.
-
-## Build and run (iOS)
-
-The same Swift package builds an iOS app when opened in Xcode:
-
-1. Open `Package.swift` in Xcode (File → Open).
-2. Select the **Sudylko** scheme and an **iPhone** or **iPad** simulator (or a connected device).
-3. Run (⌘R).
-
-Install the **iOS** platform in Xcode → Settings → Components if no simulator destinations appear.
-
-Optional CLI build (requires a working Simulator destination):
-
-```bash
-./scripts/build-ios.sh
-```
-
-Override the simulator with `DESTINATION`, for example:
-
-```bash
-DESTINATION='platform=iOS Simulator,name=iPhone 15' ./scripts/build-ios.sh
-```
+Merging a PR to `main` releases Sudylko: the PR template's Release info box picks the version bump, and the `dylkit` workflow builds, signs, and uploads it with its Sparkle feed. DylKit is pinned four times to one version: `Package.swift`, the `@dylkit/web` tarball in `server/package.json`, and the `@v<version>` in `dylkit.yml` and `release-info.yml`. A DylKit bump changes all four. See DylKit's [`apple-release`](https://github.com/dgattey/dyl-kit/blob/main/skills/apple-release/SKILL.md) skill.
 
 ### iOS vs macOS behavior
 
@@ -107,8 +41,9 @@ DESTINATION='platform=iOS Simulator,name=iPhone 15' ./scripts/build-ios.sh
 | Entry | `SudylkoApp.swift` + app delegate | `SudylkoApp+iOS.swift` |
 | Keyboard play | `BoardKeyboardHost` (digits, undo, space) | On-screen number pad |
 | Statistics and achievements | Sidebar panel picker | Same panel picker in the **Saves** sheet |
-| Dock / menu icon | `DockIconRenderer` + `SudylkoDockTile.docktileplugin` | Not used (stubs in `DockIconRenderer+iOS.swift`) |
+| Dock / menu icon | `DockIconRenderer` (live timer and accent while running) and `SudylkoDockTilePlugin` (while quit) | Not used (stubs in `DockIconRenderer+iOS.swift`) |
 | Window chrome | `WindowConfigurator`, unified toolbar | `NavigationStack`; the sidebar opens as a **Saves** sheet |
+| Settings | Settings window (⌘,) | Settings sheet |
 
 Saves, achievements, puzzle generation, and settings use the same `UserDefaults` keys on both platforms.
 
@@ -123,13 +58,9 @@ Sudylko is intended for Mac App Store distribution eventually. Avoid approaches 
 
 **Dock icon (direct distribution)**
 
-- One square bitmap in `DockIconRenderer.swift` (no custom squircle mask).
-- **Running:** `applicationIconImage` (built-in Dock chrome).
-- **Quit:** `SudylkoDockTile.docktileplugin` shows the same bitmap (accent from preferences).
-- **Finder:** bundled `AppIcon.icns` (regen on `build-app.sh`).
+- One square bitmap in `DockIconRenderer.swift` (no custom squircle mask), set as `applicationIconImage` while Sudylko runs, in the chosen accent.
+- Once Sudylko quits, the Dock tile plug-in draws the same icon in the saved accent and appearance. It reads them from the app's own preferences domain, its bundle ID minus `.docktile`, so a dev build never draws the installed release's settings. Finder shows the bundled icon from `scripts/generate-icon.swift`.
 - `NSDockTilePlugIn` is not Mac App Store–eligible.
-
-Accent and light/dark appearance affect the generated icon. Re-run `build-app.sh` after changing accent defaults if you care about the on-disk icon matching.
 
 ## macOS UI architecture
 
@@ -149,14 +80,14 @@ The window toolbar background stays transparent in all modes, including fullscre
 
 SwiftUI `.tint` on the window group is not enough for every surface. The app uses:
 
-- `AppAccentModel` plus `appAccentPropagation(_:)` on `WindowGroup` in `SudylkoApp.swift`.
+- `AppAccentModel`, whose `palette` the `AppWindow` and `SettingsWindow` scenes install, plus `appAccentPropagation(_:)` on the window content in `SudylkoApp.swift`.
 - Environment keys in `AppAccentEnvironment.swift` (`appAccent`, `appAccentForeground()`, etc.).
 
 Sheets and popovers need the propagation modifier or explicit environment if they should match the chosen accent. Mistake cells use a dedicated red fill so they stay visible when the user picks red as accent.
 
 ### Menus and keyboard shortcuts
 
-SwiftUI `commands` define Settings, Undo/Redo, Delete, Sidebar, and Help. Many actions post `Notification.Name` values from `Notifications.swift` so `ContentView` can react without tight coupling.
+SwiftUI `commands` define Undo/Redo, Delete, Sidebar, and Help. DylKit's `AppWindow` adds Check for Updates… and `SettingsWindow` adds Settings… (⌘,). Many actions post `Notification.Name` values from `Notifications.swift` so `ContentView` can react without tight coupling.
 
 **Help → Keyboard Shortcuts** uses ⇧? (Shift + `/` on US QWERTY), declared with `.keyboardShortcut("?", modifiers: .shift)`.
 
@@ -210,7 +141,7 @@ Achievement order in the UI and Debug menu is `AchievementID.displayOrder` (easi
 
 After any user-visible change:
 
-1. Run `./scripts/build-app.sh`.
+1. Run `swift run devkit relaunch` (or `swift run devkit capture --appearance light|dark` for a screenshot).
 2. Exercise the affected flow in the running app (menus, navigation, accent, fullscreen, saves).
 3. For visual work, compare against the intended appearance in both light and dark mode. Builds succeeding is necessary but not sufficient.
 

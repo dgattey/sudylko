@@ -33,7 +33,7 @@ struct CustomPuzzleDraft {
 
 struct DetailModalOverlay: View {
     @Binding var modals: DetailModals
-    @ObservedObject var session: GameSessionModel
+    let session: GameSessionModel
     let customPuzzlePrep: CustomPuzzlePrepModel
     let colorScheme: ColorScheme
     let onStartCustomPuzzle: () -> Void
