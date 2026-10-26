@@ -261,7 +261,6 @@ struct ContentView: View {
             .preferredColorScheme(resolvedColorScheme)
         #if os(macOS)
             .background(WindowConfigurator(
-                appearanceMode: appearanceMode,
                 minimumWindowSize: macWindowMinimumSize,
                 isAppActive: $isAppActive,
                 isWindowMiniaturized: $isWindowMiniaturized,

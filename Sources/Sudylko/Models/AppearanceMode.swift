@@ -28,7 +28,9 @@ enum AppearanceMode: String, CaseIterable, Identifiable {
     }
 
     #if os(macOS)
-    /// `nil` for system mode so the window follows macOS instead of keeping a forced prior theme.
+    /// The app-wide `NSApp.appearance`. System mode is `nil`, so AppKit follows macOS live, unless devkit's
+    /// `--appearance` stands in for the system appearance.
+    @MainActor
     func resolvedNSAppearance() -> NSAppearance? {
         switch self {
         case .light:
@@ -36,7 +38,7 @@ enum AppearanceMode: String, CaseIterable, Identifiable {
         case .dark:
             NSAppearance(named: .darkAqua)
         case .system:
-            nil
+            LaunchOverrides.current.appearance.flatMap { NSAppearance(named: $0 == .dark ? .darkAqua : .aqua) }
         }
     }
     #endif

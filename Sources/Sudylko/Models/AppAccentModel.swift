@@ -2,13 +2,18 @@ import Foundation
 import Observation
 import SudylkoShared
 import SwiftUI
+#if os(macOS)
+import AppKit
+#endif
 
-/// Single source of truth for the user-chosen accent; drives SwiftUI `tint` and `\.appAccent` for the whole app.
+/// Single source of truth for the user-chosen accent and appearance; drives SwiftUI `tint` and `\.appAccent` for the
+/// whole app, and on macOS `NSApp.appearance`, which every window, toolbar, menu and alert inherits.
 @Observable
 @MainActor
 final class AppAccentModel {
     #if os(macOS)
     private let dockDomain = Bundle.main.bundleIdentifier.map(SudylkoDockDomain.init(appID:))
+    @ObservationIgnored private var appliedAppAppearance: AppearanceMode?
     #endif
 
     /// macOS system appearance when settings use “System”; updated by `ContentView`.
@@ -35,11 +40,33 @@ final class AppAccentModel {
         ) { [weak self] _ in
             MainActor.assumeIsolated { self?.refresh() }
         }
+        #if os(macOS)
+        // The model is made in `App.init`, before `NSApp` exists, so the appearance lands once AppKit is up and
+        // before any window opens.
+        _ = NotificationCenter.default.addObserver(
+            forName: NSApplication.willFinishLaunchingNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.applyAppAppearance() }
+        }
+        #endif
     }
 
     func refresh() {
         applyResolvedState(force: false)
+        #if os(macOS)
+        applyAppAppearance()
+        #endif
     }
+
+    #if os(macOS)
+    private func applyAppAppearance() {
+        guard let app = NSApp, appliedAppAppearance != appearanceMode else { return }
+        app.appearance = appearanceMode.resolvedNSAppearance()
+        appliedAppAppearance = appearanceMode
+    }
+    #endif
 
     /// Skips the observation cascade when accent, appearance, and resolved scheme are unchanged.
     private func applyResolvedState(force: Bool) {

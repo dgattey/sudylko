@@ -2,11 +2,11 @@
 import AppKit
 import SwiftUI
 
-/// Aligns the NSWindow with the in-app appearance picker and publishes `NSApp.isActive`.
+/// Configures the NSWindow's chrome and minimum size and publishes `NSApp.isActive`. The window inherits the app's
+/// appearance from `NSApp.appearance`, which `AppAccentModel` sets.
 /// Window mutations are deferred off `updateNSView` — setting `isMovableByWindowBackground` during
 /// layout can crash SwiftUI's `NSHostingView` KVO (`LazyPreventsWindowDragFeature`).
 struct WindowConfigurator: NSViewRepresentable {
-    let appearanceMode: AppearanceMode
     var minimumWindowSize: CGSize = CGSize(width: 780, height: 640)
     @Binding var isAppActive: Bool
     @Binding var isWindowMiniaturized: Bool
@@ -28,10 +28,7 @@ struct WindowConfigurator: NSViewRepresentable {
 
     func updateNSView(_ nsView: ThemedWindowAnchor, context: Context) {
         context.coordinator.attach(anchor: nsView)
-        context.coordinator.scheduleApply(
-            appearanceMode: appearanceMode,
-            minimumSize: minimumWindowSize
-        )
+        context.coordinator.scheduleApply(minimumSize: minimumWindowSize)
     }
 
     @MainActor
@@ -42,7 +39,6 @@ struct WindowConfigurator: NSViewRepresentable {
 
         private weak var anchor: ThemedWindowAnchor?
         private var pendingApply: Task<Void, Never>?
-        private var lastAppearanceMode: AppearanceMode?
         private var lastMinimumSize: CGSize?
 
         init(
@@ -71,24 +67,18 @@ struct WindowConfigurator: NSViewRepresentable {
             }
         }
 
-        func scheduleApply(appearanceMode: AppearanceMode, minimumSize: CGSize) {
+        func scheduleApply(minimumSize: CGSize) {
             pendingApply?.cancel()
             pendingApply = Task { [weak self] in
                 guard !Task.isCancelled else { return }
-                self?.apply(appearanceMode: appearanceMode, minimumSize: minimumSize)
+                self?.apply(minimumSize: minimumSize)
             }
         }
 
-        private func apply(appearanceMode: AppearanceMode, minimumSize: CGSize) {
+        private func apply(minimumSize: CGSize) {
             guard let window = anchor?.window else { return }
 
             anchor?.configureWindowChromeIfNeeded(window)
-
-            let appearance = appearanceMode.resolvedNSAppearance() ?? NSApp.effectiveAppearance
-            if lastAppearanceMode != appearanceMode || window.appearance != appearance {
-                window.appearance = appearance
-                lastAppearanceMode = appearanceMode
-            }
 
             if lastMinimumSize != minimumSize {
                 window.minSize = minimumSize
